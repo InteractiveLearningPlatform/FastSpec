@@ -2,6 +2,10 @@
 
 Speclist is the ingestion and retrieval product surface in this repo.
 
+The current product direction extends Speclist into a broader marketplace and
+platform. The operating model, storage topology, security gates, and delivery
+baseline for that direction are defined in `docs/speclist-platform-ops.md`.
+
 It exists to bridge the gap between:
 
 - existing documentation that teams already have in DOCX or Confluence
@@ -30,6 +34,7 @@ It exists to bridge the gap between:
 - Keep the backend domain independent from storage, HTTP, and source-specific adapters.
 - Treat generated drafts as reviewable candidates, not final truth.
 - Require explicit export destinations and avoid silent overwrite of existing files.
+- Keep the workbench as one platform surface, not the full product boundary.
 
 ## Local Development
 
