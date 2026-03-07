@@ -74,10 +74,11 @@ const (
 )
 
 type DraftExportRequest struct {
-	Draft      DraftSpec    `json:"draft"`
-	Format     ExportFormat `json:"format"`
-	TargetDir  string       `json:"target_dir"`
-	TargetName string       `json:"target_name"`
+	Draft          DraftSpec             `json:"draft"`
+	Format         ExportFormat          `json:"format"`
+	TargetDir      string                `json:"target_dir"`
+	TargetName     string                `json:"target_name"`
+	OpenSpecTarget *OpenSpecExportTarget `json:"openspec_target,omitempty"`
 }
 
 type ExportArtifact struct {
@@ -88,6 +89,17 @@ type ExportArtifact struct {
 type DraftExportResult struct {
 	Format    ExportFormat     `json:"format"`
 	Artifacts []ExportArtifact `json:"artifacts"`
+}
+
+type OpenSpecExportTarget struct {
+	ChangeName     string `json:"change_name"`
+	Artifact       string `json:"artifact"`
+	CapabilityName string `json:"capability_name,omitempty"`
+}
+
+type OpenSpecChange struct {
+	Name      string   `json:"name"`
+	Artifacts []string `json:"artifacts"`
 }
 
 type CorpusStore interface {

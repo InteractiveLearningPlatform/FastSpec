@@ -37,7 +37,7 @@ func (emptyIndexer) Index(_ context.Context, _ string) ([]domain.SourceDocument,
 }
 
 func TestExportEndpointWritesArtifacts(t *testing.T) {
-	service := app.NewService(emptyStore{}, emptyDOCX{}, emptyConfluence{}, emptyIndexer{})
+	service := app.NewService(emptyStore{}, emptyDOCX{}, emptyConfluence{}, emptyIndexer{}, "")
 	server := NewServer(service, "")
 
 	body, err := json.Marshal(domain.DraftExportRequest{

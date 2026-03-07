@@ -21,6 +21,7 @@ It exists to bridge the gap between:
 3. Search for grounded context bundles instead of raw documents.
 4. Generate reviewable draft specs with source citations.
 5. Export accepted drafts into durable OpenSpec markdown or FastSpec YAML files.
+6. Optionally target an active OpenSpec change artifact directly instead of a generic output path.
 
 ## Design Constraints
 
@@ -55,5 +56,12 @@ Speclist currently exports reviewed drafts in two formats:
   writes a markdown file plus a citation sidecar JSON file
 - `fastspec-yaml`
   writes a YAML draft file plus the same citation sidecar JSON file
+
+OpenSpec-aware export currently supports writing into active change targets for:
+
+- `proposal.md`
+- `design.md`
+- `tasks.md`
+- `specs/<capability>/spec.md`
 
 The backend requires an explicit target directory and target name for every export.
