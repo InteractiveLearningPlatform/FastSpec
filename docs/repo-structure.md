@@ -9,8 +9,15 @@
 - `examples/`
   Concrete end-to-end references, including app-creation examples.
 - `apps/`
-  Future executable surfaces.
+  Executable surfaces, including the Rust FastSpec CLI and the Speclist product apps.
 - `crates/`
-  Future reusable Rust libraries.
+  Reusable Rust libraries for the FastSpec runtime.
 
-The repo is intentionally ahead of the implementation. The structure exists now so future slices can add runtime code without first debating where things belong.
+Current mixed-stack product exception:
+
+- `apps/speclist-api/`
+  Go hexagonal microservice for document ingestion, spec indexing, retrieval, and draft generation.
+- `apps/speclist-web/`
+  React workbench for importing sources, searching grounded context, and reviewing drafts.
+
+The repo is intentionally structured so product-specific services can live next to the Rust FastSpec runtime without blurring their boundaries.

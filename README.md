@@ -23,12 +23,13 @@ The target audience is AI agents first and humans second. Human readability stil
 - Supporting docs: Markdown with Mermaid diagrams when diagrams help
 - ML and research tooling: Python, with room for JAX-based experiments
 
-Planned platform modules:
+Platform modules:
 
 - Memory: durable project and agent memory
 - Spec designer: compact, context-aware spec authoring
 - Swarm manager: multi-agent task splitting and coordination
 - Knowledge base: retrieval-oriented technical memory
+- Speclist: ingestion and RAG workbench for converting existing documentation into grounded specs
 
 ## Repository Layout
 
@@ -37,6 +38,8 @@ Planned platform modules:
 - `templates/` - reusable FastSpec YAML templates
 - `examples/` - end-to-end example specs, including app creation examples
 - `apps/` - executable surfaces such as the future CLI
+- `apps/speclist-api/` - Go microservice for ingestion, retrieval, and grounded draft generation
+- `apps/speclist-web/` - React workbench for operators using Speclist
 - `crates/` - reusable Rust libraries
 
 Useful starting docs:
@@ -45,6 +48,7 @@ Useful starting docs:
 - `docs/tooling-stack.md`
 - `docs/linting-and-lsp.md`
 - `docs/opencode-ideas.md`
+- `docs/speclist.md`
 
 ## Getting Started
 
@@ -72,4 +76,8 @@ Rust formatting is configured in `rustfmt.toml` with a `140` character line widt
 
 ## Current Scope
 
-This repository currently bootstraps the OpenSpec workflow, the FastSpec document model, and a first example layout. The Rust runtime and generation engine are planned next, but the repo now has the structure needed to build them intentionally instead of ad hoc.
+This repository now includes:
+
+- the OpenSpec workflow and archived change history
+- the Rust FastSpec model, validation, graph, plan, and scaffold runtime
+- the first `speclist` service slice for DOCX/Confluence ingestion, spec retrieval, and grounded draft review
