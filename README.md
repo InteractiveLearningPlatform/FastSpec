@@ -88,6 +88,19 @@ To publish release artifacts, push a version tag such as `v0.1.0`. The release w
 - the `speclist-api` Linux service binary
 - the built `speclist-web` static bundle
 
+## Security Automation
+
+GitHub Actions also runs a dedicated security workflow for `main`, pull requests, and a weekly schedule. The baseline includes:
+
+- dependency review on pull requests
+- CodeQL analysis for the Go API and web app
+- gitleaks secret scanning
+- `cargo audit` for Rust dependencies
+- `govulncheck` for the Go service
+- `npm audit --omit=dev --audit-level=high` for production web dependencies
+
+Dependabot is configured to open weekly update PRs for GitHub Actions, Rust crates, Go modules, and npm packages.
+
 ## Current Scope
 
 This repository now includes:
