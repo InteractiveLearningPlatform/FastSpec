@@ -155,14 +155,15 @@ func (s *Server) handleSearch(writer http.ResponseWriter, request *http.Request)
 		return
 	}
 	var payload struct {
-		Query string `json:"query"`
-		Limit int    `json:"limit"`
+		Query   string                 `json:"query"`
+		Limit   int                    `json:"limit"`
+		Filters domain.RetrievalFilter `json:"filters"`
 	}
 	if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
 		writeError(writer, http.StatusBadRequest, err)
 		return
 	}
-	bundle, err := s.service.Search(request.Context(), payload.Query, payload.Limit)
+	bundle, err := s.service.Search(request.Context(), payload.Query, payload.Limit, payload.Filters)
 	if err != nil {
 		writeError(writer, http.StatusBadRequest, err)
 		return
@@ -176,16 +177,17 @@ func (s *Server) handleDraft(writer http.ResponseWriter, request *http.Request) 
 		return
 	}
 	var payload struct {
-		Query  string `json:"query"`
-		Title  string `json:"title"`
-		Format string `json:"format"`
-		Limit  int    `json:"limit"`
+		Query   string                 `json:"query"`
+		Title   string                 `json:"title"`
+		Format  string                 `json:"format"`
+		Limit   int                    `json:"limit"`
+		Filters domain.RetrievalFilter `json:"filters"`
 	}
 	if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
 		writeError(writer, http.StatusBadRequest, err)
 		return
 	}
-	draft, err := s.service.DraftSpec(request.Context(), payload.Query, payload.Title, payload.Format, payload.Limit)
+	draft, err := s.service.DraftSpec(request.Context(), payload.Query, payload.Title, payload.Format, payload.Limit, payload.Filters)
 	if err != nil {
 		writeError(writer, http.StatusBadRequest, err)
 		return

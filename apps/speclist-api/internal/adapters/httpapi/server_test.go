@@ -36,6 +36,18 @@ func (emptyIndexer) Index(_ context.Context, _ string) ([]domain.SourceDocument,
 	return nil, nil
 }
 
+type seededStore struct {
+	documents []domain.SourceDocument
+}
+
+func (s seededStore) Save(_ context.Context, _ domain.SourceDocument) error {
+	return nil
+}
+
+func (s seededStore) List(_ context.Context) ([]domain.SourceDocument, error) {
+	return s.documents, nil
+}
+
 func TestExportEndpointWritesArtifacts(t *testing.T) {
 	service := app.NewService(emptyStore{}, emptyDOCX{}, emptyConfluence{}, emptyIndexer{}, "")
 	server := NewServer(service, "")
@@ -76,5 +88,63 @@ func TestExportEndpointWritesArtifacts(t *testing.T) {
 	}
 	if filepath.Ext(result.Artifacts[0].Path) != ".md" {
 		t.Fatalf("expected markdown export, got %s", result.Artifacts[0].Path)
+	}
+}
+
+func TestSearchEndpointAppliesFilters(t *testing.T) {
+	service := app.NewService(seededStore{
+		documents: []domain.SourceDocument{
+			{
+				ID:       "spec-1",
+				Kind:     domain.SourceKindSpec,
+				Title:    "Repository Search",
+				Location: "openspec/specs/search.md",
+				Chunks: []domain.Chunk{
+					{ID: "chunk-1", SourceID: "spec-1", Section: "Requirement", Text: "Repository search should stay searchable.", Citation: "search.md > Requirement"},
+				},
+			},
+			{
+				ID:       "doc-1",
+				Kind:     domain.SourceKindDocx,
+				Title:    "Imported Search Notes",
+				Location: "notes/search.docx",
+				Chunks: []domain.Chunk{
+					{ID: "chunk-2", SourceID: "doc-1", Section: "Notes", Text: "Imported notes mention search.", Citation: "notes.docx > Notes"},
+				},
+			},
+		},
+	}, emptyDOCX{}, emptyConfluence{}, emptyIndexer{}, "")
+	server := NewServer(service, "")
+
+	body, err := json.Marshal(map[string]any{
+		"query": "search searchable",
+		"limit": 5,
+		"filters": map[string]any{
+			"origin":            "repository",
+			"location_contains": "openspec/specs",
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/search", bytes.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("unexpected status %d: %s", recorder.Code, recorder.Body.String())
+	}
+
+	var result domain.RetrievalBundle
+	if err := json.Unmarshal(recorder.Body.Bytes(), &result); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(result.Results) != 1 {
+		t.Fatalf("expected 1 filtered result, got %d", len(result.Results))
+	}
+	if result.Results[0].Source.Kind != domain.SourceKindSpec {
+		t.Fatalf("expected spec result, got %s", result.Results[0].Source.Kind)
 	}
 }

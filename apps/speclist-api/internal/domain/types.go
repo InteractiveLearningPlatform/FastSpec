@@ -38,6 +38,19 @@ type RetrievalResult struct {
 	Score  int        `json:"score"`
 }
 
+type SourceOrigin string
+
+const (
+	SourceOriginImported   SourceOrigin = "imported"
+	SourceOriginRepository SourceOrigin = "repository"
+)
+
+type RetrievalFilter struct {
+	Kinds            []SourceKind `json:"kinds,omitempty"`
+	Origin           SourceOrigin `json:"origin,omitempty"`
+	LocationContains string       `json:"location_contains,omitempty"`
+}
+
 type SourceStub struct {
 	ID       string            `json:"id"`
 	Kind     SourceKind        `json:"kind"`
@@ -48,6 +61,7 @@ type SourceStub struct {
 
 type RetrievalBundle struct {
 	Query   string            `json:"query"`
+	Filters RetrievalFilter   `json:"filters,omitempty"`
 	Results []RetrievalResult `json:"results"`
 }
 
@@ -58,12 +72,13 @@ type DraftSection struct {
 }
 
 type DraftSpec struct {
-	Title       string         `json:"title"`
-	Query       string         `json:"query"`
-	Format      string         `json:"format"`
-	Summary     string         `json:"summary"`
-	Sections    []DraftSection `json:"sections"`
-	SourceCount int            `json:"source_count"`
+	Title       string          `json:"title"`
+	Query       string          `json:"query"`
+	Filters     RetrievalFilter `json:"filters,omitempty"`
+	Format      string          `json:"format"`
+	Summary     string          `json:"summary"`
+	Sections    []DraftSection  `json:"sections"`
+	SourceCount int             `json:"source_count"`
 }
 
 type ExportFormat string
