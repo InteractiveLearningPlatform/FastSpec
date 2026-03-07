@@ -8,16 +8,24 @@ const initialConfluence = {
   token: "",
 };
 
+const initialExport = {
+  format: "openspec-markdown",
+  target_dir: "./exports",
+  target_name: "speclist-draft",
+};
+
 export default function App() {
   const [sources, setSources] = useState([]);
   const [searchQuery, setSearchQuery] = useState("spec retrieval citations");
   const [searchResults, setSearchResults] = useState([]);
   const [draftTitle, setDraftTitle] = useState("Speclist Draft");
   const [draft, setDraft] = useState(null);
+  const [exportResult, setExportResult] = useState(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [confluence, setConfluence] = useState(initialConfluence);
+  const [exportConfig, setExportConfig] = useState(initialExport);
 
   useEffect(() => {
     void refreshSources();
@@ -110,7 +118,36 @@ export default function App() {
       });
       const payload = await assertOk(response);
       setDraft(payload);
+      setExportResult(null);
+      setExportConfig((current) => ({
+        ...current,
+        target_name: slugify(payload.title || draftTitle),
+      }));
       setMessage(`Generated draft from ${payload.source_count} result(s)`);
+    });
+  }
+
+  async function handleExport(event) {
+    event.preventDefault();
+    if (!draft) {
+      setError("Generate a draft before exporting.");
+      return;
+    }
+
+    await runAction(async () => {
+      const response = await fetch(`${apiBase}/api/v1/exports`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          draft,
+          format: exportConfig.format,
+          target_dir: exportConfig.target_dir,
+          target_name: exportConfig.target_name,
+        }),
+      });
+      const payload = await assertOk(response);
+      setExportResult(payload);
+      setMessage(`Exported ${payload.artifacts?.length ?? 0} artifact(s)`);
     });
   }
 
@@ -229,6 +266,41 @@ export default function App() {
                   </ul>
                 </section>
               ))}
+              <form className="stack exportForm" onSubmit={handleExport}>
+                <h3>Export Reviewed Draft</h3>
+                <select
+                  value={exportConfig.format}
+                  onChange={(event) => setExportConfig({ ...exportConfig, format: event.target.value })}
+                >
+                  <option value="openspec-markdown">OpenSpec markdown</option>
+                  <option value="fastspec-yaml">FastSpec YAML</option>
+                </select>
+                <input
+                  value={exportConfig.target_dir}
+                  onChange={(event) => setExportConfig({ ...exportConfig, target_dir: event.target.value })}
+                  placeholder="Target directory"
+                />
+                <input
+                  value={exportConfig.target_name}
+                  onChange={(event) => setExportConfig({ ...exportConfig, target_name: event.target.value })}
+                  placeholder="Target name"
+                />
+                <button type="submit" disabled={loading}>
+                  Export draft
+                </button>
+              </form>
+              {exportResult && (
+                <div className="exportResult">
+                  <h3>Exported Files</h3>
+                  <ul>
+                    {exportResult.artifacts.map((artifact) => (
+                      <li key={artifact.path}>
+                        <strong>{artifact.description}:</strong> {artifact.path}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           ) : (
             <p className="empty">Draft output will appear here after retrieval.</p>
@@ -261,4 +333,12 @@ async function assertOk(response) {
     throw new Error(payload.error ?? "Request failed");
   }
   return payload;
+}
+
+function slugify(input) {
+  return String(input)
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }

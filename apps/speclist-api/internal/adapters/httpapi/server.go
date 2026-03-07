@@ -30,6 +30,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/index/specs", s.handleIndexSpecs)
 	mux.HandleFunc("/api/v1/search", s.handleSearch)
 	mux.HandleFunc("/api/v1/drafts", s.handleDraft)
+	mux.HandleFunc("/api/v1/exports", s.handleExport)
 	return withCORS(mux)
 }
 
@@ -176,6 +177,24 @@ func (s *Server) handleDraft(writer http.ResponseWriter, request *http.Request) 
 		return
 	}
 	writeJSON(writer, http.StatusOK, draft)
+}
+
+func (s *Server) handleExport(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPost {
+		writeMethodNotAllowed(writer)
+		return
+	}
+	var payload domain.DraftExportRequest
+	if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+		writeError(writer, http.StatusBadRequest, err)
+		return
+	}
+	result, err := s.service.ExportDraft(request.Context(), payload)
+	if err != nil {
+		writeError(writer, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(writer, http.StatusCreated, result)
 }
 
 func writeJSON(writer http.ResponseWriter, status int, value any) {
