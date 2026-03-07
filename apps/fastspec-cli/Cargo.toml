@@ -1,0 +1,13 @@
+[package]
+name = "fastspec-cli"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[dependencies]
+fastspec-core = { path = "../../crates/fastspec-core" }
+
+[[bin]]
+name = "fastspec"
+path = "src/main.rs"
+

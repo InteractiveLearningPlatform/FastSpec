@@ -1,0 +1,13 @@
+[workspace]
+members = [
+  "apps/fastspec-cli",
+  "crates/fastspec-core",
+  "crates/fastspec-model",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+license = "MIT"
+version = "0.1.0"
+

@@ -1,0 +1,22 @@
+apiVersion: fastspec.dev/v0alpha1
+kind: AgentCapabilitySpec
+metadata:
+  id: sample-agent-capability
+  title: Sample Agent Capability
+  summary: Describe what an agent can do and under which constraints.
+  tags:
+    - agent
+    - capability
+spec:
+  goal: Execute one bounded class of work reliably.
+  requiredContext:
+    - project-spec
+    - active-change
+  allowedTools:
+    - filesystem
+    - search
+  disallowedActions:
+    - mutate-production-secrets
+  successSignals:
+    - Structured output is produced
+    - Related artifacts are updated

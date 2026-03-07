@@ -1,0 +1,50 @@
+schema: spec-driven
+
+context: |
+  Project: FastSpec
+  FastSpec is a YAML-first, agent-oriented companion to OpenSpec.
+  OpenSpec manages change workflow and implementation slices.
+  FastSpec defines durable, low-token specs that agents and humans can both use.
+
+  Default stack direction:
+  - runtime and core libraries: Rust
+  - durable specifications: YAML
+  - docs: Markdown with Mermaid where a diagram is clearer than prose
+  - research and ML tooling: Python
+
+  Repository layout conventions:
+  - openspec/: change workflow and scoped implementation artifacts
+  - docs/: human-readable architecture and workflow notes
+  - templates/: reusable FastSpec YAML templates
+  - examples/: end-to-end example specs and app-creation references
+  - apps/: executable entrypoints, such as a future CLI
+  - crates/: reusable Rust libraries
+
+  Product direction:
+  - made for agents, with human interfaces layered on top
+  - compact structured artifacts over long unstructured prose
+  - decentralized and retrieval-friendly
+  - formal enough to support reasoning, validation, and composition
+
+  External tooling context:
+  - OpenSpec is the default workflow layer. The preferred flow is propose -> apply -> archive.
+  - Docker Compose is the preferred local multi-service orchestrator because it keeps services, networks, and volumes in one YAML file and brings stacks up with one command.
+  - Traefik is the preferred edge and routing layer for containerized examples because it can discover routes dynamically from providers such as Docker and file config.
+  - CrowdSec is the preferred behavioral security layer for examples that need detection and remediation. In containerized setups it needs persisted data/config volumes and access to relevant logs.
+  - Trivy is the preferred baseline security scanner for repos, filesystems, and container images. Use it for vulnerabilities, misconfigurations, secrets, licenses, and SBOM-oriented checks.
+  - For Rust developer experience, prefer rustfmt, Clippy, and rust-analyzer. Treat Language Server Protocol support as a first-class capability for agent and editor workflows.
+  - OpenCode is a useful design reference for provider-agnostic agents, plan/build mode separation, subagents, strong terminal UX, and LSP-aware coding flows.
+
+rules:
+  proposal:
+    - State the operator or contributor problem first.
+    - Include explicit non-goals when the repo shape or runtime scope could drift.
+    - Call out which area is affected: docs, OpenSpec workflow, templates, examples, Rust runtime, or Python research tooling.
+  design:
+    - Explain how OpenSpec artifacts and durable FastSpec YAML artifacts relate to each other.
+    - Describe retrieval implications for agents and humans.
+    - Use Mermaid when structure or flow is central to the design.
+  tasks:
+    - Keep tasks small enough to complete in one implementation slice.
+    - Include docs and example updates when behavior or structure changes.
+    - Separate repo bootstrap from runtime implementation when it reduces context size.

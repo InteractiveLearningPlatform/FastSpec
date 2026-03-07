@@ -1,0 +1,27 @@
+apiVersion: fastspec.dev/v0alpha1
+kind: ModuleSpec
+metadata:
+  id: api
+  title: Architecture API
+  summary: Backend module for serving architecture graph and lint results.
+  tags:
+    - backend
+    - api
+spec:
+  purpose: Expose architecture metadata and validation findings.
+  inputs:
+    - name: project-spec
+      description: Normalized project-level FastSpec document
+    - name: module-specs
+      description: Individual module documents
+  outputs:
+    - name: architecture-graph
+      description: Structured graph of modules and relationships
+    - name: lint-results
+      description: Rule evaluation results
+  dependencies:
+    - id: fastspec-core
+      reason: Document normalization and validation
+  invariants:
+    - Responses stay machine-readable
+    - Module relationships remain explicit

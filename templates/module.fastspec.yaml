@@ -1,0 +1,21 @@
+apiVersion: fastspec.dev/v0alpha1
+kind: ModuleSpec
+metadata:
+  id: sample-module
+  title: Sample Module
+  summary: Focused description of one module.
+  tags:
+    - module
+spec:
+  purpose: Describe one bounded part of the system.
+  inputs:
+    - name: request
+      description: External or internal input
+  outputs:
+    - name: response
+      description: Produced artifact or result
+  dependencies:
+    - id: shared-kernel
+      reason: Shared contracts
+  invariants:
+    - Preserve structured machine-readable output

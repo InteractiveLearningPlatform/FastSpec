@@ -1,0 +1,24 @@
+apiVersion: fastspec.dev/v0alpha1
+kind: ModuleSpec
+metadata:
+  id: web
+  title: Architecture UI
+  summary: Frontend module for browsing architecture and lint results.
+  tags:
+    - frontend
+    - ui
+spec:
+  purpose: Render project architecture, dependency edges, and findings.
+  inputs:
+    - name: architecture-graph
+      description: Structured graph returned by the backend
+    - name: lint-results
+      description: Validation output grouped by rule
+  outputs:
+    - name: architecture-view
+      description: Visual representation of modules and dependencies
+  dependencies:
+    - id: api
+      reason: Source of architecture and validation data
+  invariants:
+    - Visual output maps directly back to the source specs

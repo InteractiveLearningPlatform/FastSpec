@@ -1,0 +1,31 @@
+apiVersion: fastspec.dev/v0alpha1
+kind: ProjectSpec
+metadata:
+  id: archlint-reproduction
+  title: Archlint Reproduction
+  summary: Reproduce a small architecture-aware app scaffold from compact specifications.
+  owners:
+    - fastspec-example
+  tags:
+    - example
+    - app-creation
+    - architecture
+spec:
+  goals:
+    - Demonstrate project-level FastSpec structure
+    - Show how module specs decompose an application
+  nonGoals:
+    - Produce a runnable generated application in this slice
+  constraints:
+    - Prefer simple, retrieval-friendly YAML
+    - Keep modules independently understandable
+  modules:
+    - id: api
+      purpose: Serve architecture data and validation results
+    - id: web
+      purpose: Present architecture and validation views
+  workflows:
+    - id: plan
+      purpose: Turn compact specs into a concrete implementation plan
+    - id: generate
+      purpose: Materialize a target application from validated specs

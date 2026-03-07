@@ -1,0 +1,26 @@
+apiVersion: fastspec.dev/v0alpha1
+kind: ProjectSpec
+metadata:
+  id: sample-project
+  title: Sample Project
+  summary: Compact description of the product or system.
+  owners:
+    - agent-team
+  tags:
+    - sample
+    - fastspec
+spec:
+  goals:
+    - Ship a clear, testable feature set
+  nonGoals:
+    - Avoid unbounded scope in the first slice
+  constraints:
+    - Keep artifacts easy for agents to retrieve
+  modules:
+    - id: api
+      purpose: Serve system APIs
+    - id: web
+      purpose: Render the user interface
+  workflows:
+    - id: bootstrap
+      purpose: Initialize the repo and core documents

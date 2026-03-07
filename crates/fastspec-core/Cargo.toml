@@ -1,0 +1,12 @@
+[package]
+name = "fastspec-core"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[dependencies]
+fastspec-model = { path = "../fastspec-model" }
+
+[lib]
+path = "src/lib.rs"
+
