@@ -53,6 +53,43 @@ pub struct ValidationOutput {
     pub findings: Vec<ValidationFinding>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GraphNodeKind {
+    Project,
+    Module,
+    Workflow,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GraphEdgeKind {
+    Contains,
+    DefinesWorkflow,
+    DependsOn,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct GraphNode {
+    pub id: String,
+    pub kind: GraphNodeKind,
+    pub title: String,
+    pub path: PathBuf,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct GraphEdge {
+    pub from: String,
+    pub to: String,
+    pub kind: GraphEdgeKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct GraphOutput {
+    pub nodes: Vec<GraphNode>,
+    pub edges: Vec<GraphEdge>,
+}
+
 pub fn collect_spec_files(root: &Path) -> io::Result<Vec<PathBuf>> {
     let mut files = Vec::new();
     visit(root, &mut files, true)?;
@@ -178,6 +215,86 @@ pub fn validate_findings(path: &Path) -> io::Result<ValidationOutput> {
     Ok(ValidationOutput { valid: findings.is_empty(), findings })
 }
 
+pub fn export_graph(path: &Path) -> io::Result<GraphOutput> {
+    let validation = validate_findings(path)?;
+    if !validation.valid {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("graph export requires a validation-clean tree; found {} validation finding(s)", validation.findings.len()),
+        ));
+    }
+
+    let documents = parse_spec_path(path)?;
+    let mut nodes = Vec::new();
+    let mut edges = Vec::new();
+    let mut module_paths: HashMap<String, PathBuf> = HashMap::new();
+    let mut module_titles: HashMap<String, String> = HashMap::new();
+
+    for document in &documents {
+        if let FastSpecDocument::Module(module) = &document.document {
+            module_paths.insert(module.metadata.id.clone(), document.path.clone());
+            module_titles.insert(module.metadata.id.clone(), module.metadata.title.clone());
+        }
+    }
+
+    for document in &documents {
+        match &document.document {
+            FastSpecDocument::Project(project) => {
+                let project_id = project.metadata.id.clone();
+                nodes.push(GraphNode {
+                    id: project_id.clone(),
+                    kind: GraphNodeKind::Project,
+                    title: project.metadata.title.clone(),
+                    path: document.path.clone(),
+                });
+
+                for declared_module in &project.spec.modules {
+                    if let (Some(path), Some(title)) = (module_paths.get(&declared_module.id), module_titles.get(&declared_module.id)) {
+                        nodes.push(GraphNode {
+                            id: declared_module.id.clone(),
+                            kind: GraphNodeKind::Module,
+                            title: title.clone(),
+                            path: path.clone(),
+                        });
+                        edges.push(GraphEdge { from: project_id.clone(), to: declared_module.id.clone(), kind: GraphEdgeKind::Contains });
+                    }
+                }
+
+                for workflow in &project.spec.workflows {
+                    let workflow_node_id = format!("workflow:{}", workflow.id);
+                    nodes.push(GraphNode {
+                        id: workflow_node_id.clone(),
+                        kind: GraphNodeKind::Workflow,
+                        title: workflow.purpose.clone(),
+                        path: document.path.clone(),
+                    });
+                    edges.push(GraphEdge { from: project_id.clone(), to: workflow_node_id, kind: GraphEdgeKind::DefinesWorkflow });
+                }
+            }
+            FastSpecDocument::Module(module) => {
+                for dependency in &module.spec.dependencies {
+                    if module_paths.contains_key(&dependency.id) {
+                        edges.push(GraphEdge {
+                            from: module.metadata.id.clone(),
+                            to: dependency.id.clone(),
+                            kind: GraphEdgeKind::DependsOn,
+                        });
+                    }
+                }
+            }
+            FastSpecDocument::AgentCapability(_) => {}
+        }
+    }
+
+    nodes.sort_by(|left, right| left.id.cmp(&right.id).then(left.path.cmp(&right.path)));
+    nodes.dedup_by(|left, right| left.id == right.id && left.kind == right.kind);
+    edges.sort_by(|left, right| {
+        left.from.cmp(&right.from).then(left.to.cmp(&right.to)).then(format!("{:?}", left.kind).cmp(&format!("{:?}", right.kind)))
+    });
+
+    Ok(GraphOutput { nodes, edges })
+}
+
 #[derive(Debug, Clone)]
 pub struct SpecDocument {
     pub path: PathBuf,
@@ -244,7 +361,7 @@ mod tests {
 
     use fastspec_model::SpecKind;
 
-    use super::{parse_spec_file, validate_findings, validate_spec_tree};
+    use super::{export_graph, parse_spec_file, validate_findings, validate_spec_tree};
 
     #[test]
     fn validates_archlint_example_tree() {
@@ -313,6 +430,34 @@ mod tests {
         assert!(output.findings.iter().any(|finding| finding.code == "missing_module_document"));
         assert!(output.findings.iter().any(|finding| finding.code == "undeclared_module_document"));
         assert!(output.findings.iter().any(|finding| finding.code == "invalid_module_dependency"));
+
+        fs::remove_dir_all(root).expect("fixture dir should be removed");
+    }
+
+    #[test]
+    fn exports_graph_for_example_tree() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/archlint-reproduction/specs");
+        let graph = export_graph(&root).expect("example graph should export");
+        assert!(graph.nodes.iter().any(|node| node.id == "archlint-reproduction"));
+        assert!(graph.nodes.iter().any(|node| node.id == "api"));
+        assert!(graph.nodes.iter().any(|node| node.id == "web"));
+        assert!(graph.nodes.iter().any(|node| node.id == "workflow:plan"));
+        assert!(graph.edges.iter().any(|edge| edge.from == "archlint-reproduction" && edge.to == "api"));
+        assert!(graph.edges.iter().any(|edge| edge.from == "web" && edge.to == "api"));
+    }
+
+    #[test]
+    fn rejects_graph_export_for_invalid_tree() {
+        let root = unique_temp_dir("invalid-graph-fixtures");
+        fs::create_dir_all(root.join("modules")).expect("fixture directories should be created");
+        fs::write(
+            root.join("project.fastspec.yaml"),
+            "apiVersion: fastspec.dev/v0alpha1\nkind: ProjectSpec\nmetadata:\n  id: demo\n  title: Demo\n  summary: Demo project\nspec:\n  modules:\n    - id: api\n      purpose: API module\n",
+        )
+        .expect("project fixture should write");
+
+        let error = export_graph(&root).expect_err("invalid tree should block graph export");
+        assert!(error.to_string().contains("validation-clean tree"));
 
         fs::remove_dir_all(root).expect("fixture dir should be removed");
     }
