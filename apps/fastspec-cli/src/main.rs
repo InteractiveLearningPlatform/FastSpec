@@ -2,38 +2,89 @@ use std::env;
 use std::path::Path;
 use std::process::ExitCode;
 
-use fastspec_core::{parse_spec_path, validate_spec_tree};
+use fastspec_core::{InspectOutput, SummaryOutput, parse_spec_path, validate_spec_tree};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CommandKind {
+    Summary,
+    Inspect,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CliCommand {
+    kind: CommandKind,
+    path: String,
+    json: bool,
+}
 
 fn main() -> ExitCode {
-    let mut args = env::args().skip(1);
-    match (args.next().as_deref(), args.next(), args.next()) {
-        (Some("inspect"), Some(path), None) => inspect_path(Path::new(&path)),
-        (Some("summary"), Some(path), None) => print_summary(Path::new(&path)),
-        _ => {
-            eprintln!("usage: fastspec <summary|inspect> <path>");
+    match parse_args(env::args().skip(1)) {
+        Ok(command) => run_command(command),
+        Err(message) => {
+            eprintln!("{message}");
             ExitCode::from(2)
         }
     }
 }
 
-fn print_summary(path: &Path) -> ExitCode {
+fn parse_args(args: impl IntoIterator<Item = String>) -> Result<CliCommand, String> {
+    let mut args = args.into_iter();
+    let kind = match args.next().as_deref() {
+        Some("summary") => CommandKind::Summary,
+        Some("inspect") => CommandKind::Inspect,
+        _ => return Err("usage: fastspec <summary|inspect> [--json] <path>".to_string()),
+    };
+
+    let mut json = false;
+    let mut path = None;
+    for arg in args {
+        if arg == "--json" {
+            json = true;
+        } else if path.is_none() {
+            path = Some(arg);
+        } else {
+            return Err("usage: fastspec <summary|inspect> [--json] <path>".to_string());
+        }
+    }
+
+    let Some(path) = path else {
+        return Err("usage: fastspec <summary|inspect> [--json] <path>".to_string());
+    };
+
+    Ok(CliCommand { kind, path, json })
+}
+
+fn run_command(command: CliCommand) -> ExitCode {
+    match command.kind {
+        CommandKind::Summary => print_summary(Path::new(&command.path), command.json),
+        CommandKind::Inspect => inspect_path(Path::new(&command.path), command.json),
+    }
+}
+
+fn print_summary(path: &Path, json: bool) -> ExitCode {
     match validate_spec_tree(path) {
         Ok(summaries) => {
+            if json {
+                return print_json(&SummaryOutput { documents: summaries });
+            }
+
             for summary in summaries {
                 println!("{}\t{}\t{}\t{}", summary.kind.as_str(), summary.id, summary.title, summary.path.display());
             }
             ExitCode::SUCCESS
         }
-        Err(error) => {
-            eprintln!("{error}");
-            ExitCode::from(1)
-        }
+        Err(error) => print_error(&error.to_string(), json),
     }
 }
 
-fn inspect_path(path: &Path) -> ExitCode {
+fn inspect_path(path: &Path, json: bool) -> ExitCode {
     match parse_spec_path(path) {
         Ok(documents) => {
+            if json {
+                let documents = documents.into_iter().map(|document| document.into_inspect()).collect();
+                return print_json(&InspectOutput { documents });
+            }
+
             for document in documents {
                 println!("path: {}", document.path.display());
                 println!("kind: {}", document.document.kind().as_str());
@@ -50,9 +101,55 @@ fn inspect_path(path: &Path) -> ExitCode {
             }
             ExitCode::SUCCESS
         }
+        Err(error) => print_error(&error.to_string(), json),
+    }
+}
+
+fn print_json<T: serde::Serialize>(value: &T) -> ExitCode {
+    match serde_json::to_string_pretty(value) {
+        Ok(json) => {
+            println!("{json}");
+            ExitCode::SUCCESS
+        }
         Err(error) => {
-            eprintln!("{error}");
+            eprintln!("failed to serialize JSON output: {error}");
             ExitCode::from(1)
         }
+    }
+}
+
+fn print_error(message: &str, json: bool) -> ExitCode {
+    if json {
+        match serde_json::to_string_pretty(&serde_json::json!({ "error": message })) {
+            Ok(json) => eprintln!("{json}"),
+            Err(error) => eprintln!("{{\"error\":\"{message}\",\"serialization_error\":\"{error}\"}}"),
+        }
+    } else {
+        eprintln!("{message}");
+    }
+
+    ExitCode::from(1)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CliCommand, CommandKind, parse_args};
+
+    #[test]
+    fn parses_json_flag_before_path() {
+        let command = parse_args(["summary".to_string(), "--json".to_string(), "specs".to_string()]).expect("args should parse");
+        assert_eq!(command, CliCommand { kind: CommandKind::Summary, path: "specs".to_string(), json: true });
+    }
+
+    #[test]
+    fn parses_json_flag_after_path() {
+        let command = parse_args(["inspect".to_string(), "specs".to_string(), "--json".to_string()]).expect("args should parse");
+        assert_eq!(command, CliCommand { kind: CommandKind::Inspect, path: "specs".to_string(), json: true });
+    }
+
+    #[test]
+    fn rejects_extra_positional_arguments() {
+        let error = parse_args(["summary".to_string(), "specs".to_string(), "extra".to_string()]).expect_err("extra args should fail");
+        assert!(error.contains("usage: fastspec"));
     }
 }

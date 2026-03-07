@@ -1,9 +1,9 @@
 use std::fmt;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_yaml::Value;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum SpecKind {
     Project,
     Module,
@@ -41,7 +41,7 @@ impl fmt::Display for ParseError {
 
 impl std::error::Error for ParseError {}
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct Metadata {
     pub id: String,
     pub title: String,
@@ -52,25 +52,25 @@ pub struct Metadata {
     pub tags: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct NamedItem {
     pub name: String,
     pub description: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct IdPurpose {
     pub id: String,
     pub purpose: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct Dependency {
     pub id: String,
     pub reason: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ProjectSpecBody {
     #[serde(default)]
     pub goals: Vec<String>,
@@ -84,7 +84,7 @@ pub struct ProjectSpecBody {
     pub workflows: Vec<IdPurpose>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ModuleSpecBody {
     pub purpose: String,
     #[serde(default)]
@@ -97,7 +97,7 @@ pub struct ModuleSpecBody {
     pub invariants: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct AgentCapabilitySpecBody {
     pub goal: String,
     #[serde(rename = "requiredContext", default)]
@@ -110,7 +110,7 @@ pub struct AgentCapabilitySpecBody {
     pub success_signals: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ProjectSpecDocument {
     #[serde(rename = "apiVersion")]
     pub api_version: String,
@@ -119,7 +119,7 @@ pub struct ProjectSpecDocument {
     pub spec: ProjectSpecBody,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ModuleSpecDocument {
     #[serde(rename = "apiVersion")]
     pub api_version: String,
@@ -128,7 +128,7 @@ pub struct ModuleSpecDocument {
     pub spec: ModuleSpecBody,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct AgentCapabilitySpecDocument {
     #[serde(rename = "apiVersion")]
     pub api_version: String,
@@ -137,7 +137,8 @@ pub struct AgentCapabilitySpecDocument {
     pub spec: AgentCapabilitySpecBody,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", content = "document")]
 pub enum FastSpecDocument {
     Project(ProjectSpecDocument),
     Module(ModuleSpecDocument),

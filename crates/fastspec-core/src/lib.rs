@@ -3,13 +3,32 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use fastspec_model::{FastSpecDocument, SpecKind, parse_document};
+use serde::Serialize;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SpecSummary {
     pub path: PathBuf,
     pub kind: SpecKind,
     pub id: String,
     pub title: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SummaryOutput {
+    pub documents: Vec<SpecSummary>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct InspectDocument {
+    pub path: PathBuf,
+    pub metadata: fastspec_model::Metadata,
+    #[serde(flatten)]
+    pub document: FastSpecDocument,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct InspectOutput {
+    pub documents: Vec<InspectDocument>,
 }
 
 pub fn collect_spec_files(root: &Path) -> io::Result<Vec<PathBuf>> {
@@ -46,6 +65,10 @@ impl SpecDocument {
             id: self.document.metadata().id.clone(),
             title: self.document.metadata().title.clone(),
         }
+    }
+
+    pub fn into_inspect(self) -> InspectDocument {
+        InspectDocument { path: self.path, metadata: self.document.metadata().clone(), document: self.document }
     }
 }
 
