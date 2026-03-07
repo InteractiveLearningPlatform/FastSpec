@@ -90,6 +90,27 @@ pub struct GraphOutput {
     pub edges: Vec<GraphEdge>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PlanPhase {
+    Bootstrap,
+    Module,
+    Workflow,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PlanStep {
+    pub id: String,
+    pub phase: PlanPhase,
+    pub title: String,
+    pub depends_on: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PlanOutput {
+    pub steps: Vec<PlanStep>,
+}
+
 pub fn collect_spec_files(root: &Path) -> io::Result<Vec<PathBuf>> {
     let mut files = Vec::new();
     visit(root, &mut files, true)?;
@@ -295,6 +316,79 @@ pub fn export_graph(path: &Path) -> io::Result<GraphOutput> {
     Ok(GraphOutput { nodes, edges })
 }
 
+pub fn export_plan(path: &Path) -> io::Result<PlanOutput> {
+    let graph = export_graph(path)?;
+    let mut steps = Vec::new();
+
+    let project_nodes: Vec<&GraphNode> = graph.nodes.iter().filter(|node| node.kind == GraphNodeKind::Project).collect();
+    let module_nodes: Vec<&GraphNode> = graph.nodes.iter().filter(|node| node.kind == GraphNodeKind::Module).collect();
+    let workflow_nodes: Vec<&GraphNode> = graph.nodes.iter().filter(|node| node.kind == GraphNodeKind::Workflow).collect();
+
+    let mut project_step_ids = Vec::new();
+    for project in project_nodes {
+        let step_id = format!("project:{}", project.id);
+        project_step_ids.push(step_id.clone());
+        steps.push(PlanStep {
+            id: step_id,
+            phase: PlanPhase::Bootstrap,
+            title: format!("Bootstrap project {}", project.title),
+            depends_on: Vec::new(),
+        });
+    }
+
+    let module_dependency_map: HashMap<String, Vec<String>> =
+        graph.edges.iter().filter(|edge| edge.kind == GraphEdgeKind::DependsOn).fold(HashMap::new(), |mut map, edge| {
+            map.entry(edge.from.clone()).or_default().push(edge.to.clone());
+            map
+        });
+
+    let mut remaining_modules: Vec<String> = module_nodes.iter().map(|node| node.id.clone()).collect();
+    remaining_modules.sort();
+    let mut emitted_modules = HashSet::new();
+    let mut module_step_ids = Vec::new();
+
+    while !remaining_modules.is_empty() {
+        let mut ready = Vec::new();
+        for module_id in &remaining_modules {
+            let dependencies = module_dependency_map.get(module_id).cloned().unwrap_or_default();
+            if dependencies.iter().all(|dependency| emitted_modules.contains(dependency)) {
+                ready.push(module_id.clone());
+            }
+        }
+
+        if ready.is_empty() {
+            ready.push(remaining_modules[0].clone());
+        }
+
+        for module_id in ready {
+            remaining_modules.retain(|candidate| candidate != &module_id);
+            emitted_modules.insert(module_id.clone());
+
+            let node = module_nodes.iter().find(|node| node.id == module_id).expect("module node should exist");
+            let mut depends_on = project_step_ids.clone();
+            if let Some(module_dependencies) = module_dependency_map.get(&module_id) {
+                for dependency in module_dependencies {
+                    depends_on.push(format!("module:{dependency}"));
+                }
+            }
+            let step_id = format!("module:{module_id}");
+            module_step_ids.push(step_id.clone());
+            steps.push(PlanStep { id: step_id, phase: PlanPhase::Module, title: format!("Implement module {}", node.title), depends_on });
+        }
+    }
+
+    for workflow in workflow_nodes {
+        steps.push(PlanStep {
+            id: format!("workflow:{}", workflow.id.trim_start_matches("workflow:")),
+            phase: PlanPhase::Workflow,
+            title: format!("Plan workflow {}", workflow.title),
+            depends_on: module_step_ids.clone(),
+        });
+    }
+
+    Ok(PlanOutput { steps })
+}
+
 #[derive(Debug, Clone)]
 pub struct SpecDocument {
     pub path: PathBuf,
@@ -361,7 +455,7 @@ mod tests {
 
     use fastspec_model::SpecKind;
 
-    use super::{export_graph, parse_spec_file, validate_findings, validate_spec_tree};
+    use super::{export_graph, export_plan, parse_spec_file, validate_findings, validate_spec_tree};
 
     #[test]
     fn validates_archlint_example_tree() {
@@ -460,6 +554,18 @@ mod tests {
         assert!(error.to_string().contains("validation-clean tree"));
 
         fs::remove_dir_all(root).expect("fixture dir should be removed");
+    }
+
+    #[test]
+    fn exports_plan_for_example_tree() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/archlint-reproduction/specs");
+        let plan = export_plan(&root).expect("example plan should export");
+        assert!(plan.steps.iter().any(|step| step.id == "project:archlint-reproduction"));
+        assert!(plan.steps.iter().any(|step| step.id == "module:api"));
+        assert!(
+            plan.steps.iter().any(|step| step.id == "module:web" && step.depends_on.iter().any(|dependency| dependency == "module:api"))
+        );
+        assert!(plan.steps.iter().any(|step| step.id == "workflow:plan"));
     }
 
     fn unique_temp_file(name: &str) -> PathBuf {
