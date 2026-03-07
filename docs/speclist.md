@@ -2,6 +2,10 @@
 
 Speclist is the ingestion and retrieval product surface in this repo.
 
+The current product direction extends Speclist into a broader marketplace and
+platform. The operating model, storage topology, security gates, and delivery
+baseline for that direction are defined in `docs/speclist-platform-ops.md`.
+
 It exists to bridge the gap between:
 
 - existing documentation that teams already have in DOCX or Confluence
@@ -30,6 +34,7 @@ It exists to bridge the gap between:
 - Keep the backend domain independent from storage, HTTP, and source-specific adapters.
 - Treat generated drafts as reviewable candidates, not final truth.
 - Require explicit export destinations and avoid silent overwrite of existing files.
+- Keep the workbench as one platform surface, not the full product boundary.
 
 ## Local Development
 
@@ -55,7 +60,7 @@ Speclist currently exports reviewed drafts in two formats:
 - `openspec-markdown`
   writes a markdown file plus a citation sidecar JSON file
 - `fastspec-yaml`
-  writes a YAML draft file plus the same citation sidecar JSON file
+  writes a typed YAML draft document plus the same citation sidecar JSON file
 
 OpenSpec-aware export currently supports writing into active change targets for:
 

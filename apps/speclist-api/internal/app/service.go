@@ -530,7 +530,7 @@ func renderSpecTemplate(draft domain.DraftSpec, capabilityName string) string {
 func renderFastSpecYAML(draft domain.DraftSpec, targetName string) string {
 	var builder strings.Builder
 	builder.WriteString("apiVersion: speclist.fastspec.dev/v0alpha1\n")
-	builder.WriteString("kind: FastSpecDraft\n")
+	builder.WriteString("kind: SpecDocumentDraft\n")
 	builder.WriteString("metadata:\n")
 	builder.WriteString("  id: ")
 	builder.WriteString(targetName)
@@ -541,6 +541,7 @@ func renderFastSpecYAML(draft domain.DraftSpec, targetName string) string {
 	builder.WriteString("  summary: ")
 	builder.WriteString(yamlQuote(draft.Summary))
 	builder.WriteString("\n")
+	builder.WriteString("  draftType: \"structured-spec\"\n")
 	builder.WriteString("spec:\n")
 	builder.WriteString("  query: ")
 	builder.WriteString(yamlQuote(draft.Query))
@@ -548,17 +549,39 @@ func renderFastSpecYAML(draft domain.DraftSpec, targetName string) string {
 	builder.WriteString("  sourceCount: ")
 	builder.WriteString(fmt.Sprintf("%d", draft.SourceCount))
 	builder.WriteString("\n")
+	builder.WriteString("  rationale: |-\n")
+	for _, line := range strings.Split(findSectionBody(draft, "Why", draft.Summary), "\n") {
+		builder.WriteString("    ")
+		builder.WriteString(line)
+		builder.WriteString("\n")
+	}
+	builder.WriteString("  context: |-\n")
+	for _, line := range strings.Split(findSectionBody(draft, "Context", draft.Summary), "\n") {
+		builder.WriteString("    ")
+		builder.WriteString(line)
+		builder.WriteString("\n")
+	}
+	builder.WriteString("  requirements:\n")
+	requirements := bulletize(findSectionBody(draft, "Proposed Requirements", draft.Summary))
+	if len(requirements) == 0 {
+		requirements = []string{draft.Summary}
+	}
+	for index, requirement := range requirements {
+		builder.WriteString("    - id: ")
+		builder.WriteString(yamlQuote(fmt.Sprintf("%s-%d", targetName, index+1)))
+		builder.WriteString("\n")
+		builder.WriteString("      statement: ")
+		builder.WriteString(yamlQuote(requirement))
+		builder.WriteString("\n")
+	}
 	builder.WriteString("  sections:\n")
 	for _, section := range draft.Sections {
 		builder.WriteString("    - heading: ")
 		builder.WriteString(yamlQuote(section.Heading))
 		builder.WriteString("\n")
-		builder.WriteString("      body: |-\n")
-		for _, line := range strings.Split(section.Body, "\n") {
-			builder.WriteString("        ")
-			builder.WriteString(line)
-			builder.WriteString("\n")
-		}
+		builder.WriteString("      summary: ")
+		builder.WriteString(yamlQuote(singleLine(section.Body)))
+		builder.WriteString("\n")
 		builder.WriteString("      citations:\n")
 		if len(section.Citations) == 0 {
 			builder.WriteString("        []\n")
@@ -658,6 +681,12 @@ func indentLines(input string) string {
 		lines[index] = line
 	}
 	return strings.Join(lines, "\n")
+}
+
+func singleLine(input string) string {
+	input = strings.TrimSpace(strings.ReplaceAll(input, "\n", " "))
+	input = strings.Join(strings.Fields(input), " ")
+	return input
 }
 
 func (s *Service) resolveOpenSpecTarget(target domain.OpenSpecExportTarget) (string, string, error) {
