@@ -3,7 +3,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use fastspec_model::{FastSpecDocument, SpecKind, parse_document};
+use fastspec_model::{FastSpecDocument, ProjectSpecDocument, SpecKind, parse_document};
 use serde::Serialize;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -109,6 +109,26 @@ pub struct PlanStep {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PlanOutput {
     pub steps: Vec<PlanStep>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeneratedArtifactKind {
+    Directory,
+    File,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct GeneratedArtifact {
+    pub path: PathBuf,
+    pub kind: GeneratedArtifactKind,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ScaffoldOutput {
+    pub output_dir: PathBuf,
+    pub artifacts: Vec<GeneratedArtifact>,
 }
 
 pub fn collect_spec_files(root: &Path) -> io::Result<Vec<PathBuf>> {
@@ -389,6 +409,97 @@ pub fn export_plan(path: &Path) -> io::Result<PlanOutput> {
     Ok(PlanOutput { steps })
 }
 
+pub fn generate_scaffold(path: &Path, output_dir: &Path) -> io::Result<ScaffoldOutput> {
+    let validation = validate_findings(path)?;
+    if !validation.valid {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("scaffold generation requires a validation-clean tree; found {} validation finding(s)", validation.findings.len()),
+        ));
+    }
+
+    ensure_output_dir_is_empty(output_dir)?;
+
+    let plan = export_plan(path)?;
+    let documents = parse_spec_path(path)?;
+    let Some(project) = documents.iter().find_map(|document| match &document.document {
+        FastSpecDocument::Project(project) => Some(project),
+        _ => None,
+    }) else {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "scaffold generation requires a project document"));
+    };
+
+    let module_documents: HashMap<String, &fastspec_model::ModuleSpecDocument> = documents
+        .iter()
+        .filter_map(|document| match &document.document {
+            FastSpecDocument::Module(module) => Some((module.metadata.id.clone(), module)),
+            _ => None,
+        })
+        .collect();
+
+    fs::create_dir_all(output_dir)?;
+
+    let mut artifacts = Vec::new();
+    record_directory(&mut artifacts, output_dir.to_path_buf(), "scaffold root".to_string());
+
+    let modules_dir = output_dir.join("modules");
+    fs::create_dir_all(&modules_dir)?;
+    record_directory(&mut artifacts, modules_dir.clone(), "module scaffold directory".to_string());
+
+    let workflows_dir = output_dir.join("workflows");
+    fs::create_dir_all(&workflows_dir)?;
+    record_directory(&mut artifacts, workflows_dir.clone(), "workflow scaffold directory".to_string());
+
+    write_artifact_file(
+        &mut artifacts,
+        output_dir.join("README.md"),
+        render_project_readme(project, &plan),
+        "project scaffold overview".to_string(),
+    )?;
+
+    for module in &project.spec.modules {
+        let module_dir = modules_dir.join(&module.id);
+        fs::create_dir_all(&module_dir)?;
+        record_directory(&mut artifacts, module_dir.clone(), format!("module directory for {}", module.id));
+
+        let module_document = module_documents.get(&module.id).ok_or_else(|| {
+            io::Error::new(io::ErrorKind::InvalidData, format!("validated module `{}` should have a matching document", module.id))
+        })?;
+
+        write_artifact_file(
+            &mut artifacts,
+            module_dir.join("README.md"),
+            render_module_readme(module_document),
+            format!("module stub for {}", module.id),
+        )?;
+    }
+
+    for workflow in &project.spec.workflows {
+        write_artifact_file(
+            &mut artifacts,
+            workflows_dir.join(format!("{}.md", workflow.id)),
+            render_workflow_stub(project, workflow, &plan),
+            format!("workflow stub for {}", workflow.id),
+        )?;
+    }
+
+    let manifest_path = output_dir.join("fastspec-manifest.json");
+    let manifest_artifact = GeneratedArtifact {
+        path: manifest_path.clone(),
+        kind: GeneratedArtifactKind::File,
+        description: "machine-readable scaffold manifest".to_string(),
+    };
+    let mut manifest_artifacts = artifacts.clone();
+    manifest_artifacts.push(manifest_artifact.clone());
+    let manifest_json =
+        serde_json::to_string_pretty(&ScaffoldOutput { output_dir: output_dir.to_path_buf(), artifacts: manifest_artifacts })
+            .map_err(|error| io::Error::other(format!("failed to serialize scaffold manifest: {error}")))?;
+    fs::write(&manifest_path, manifest_json)?;
+    artifacts.push(manifest_artifact);
+
+    Ok(ScaffoldOutput { output_dir: output_dir.to_path_buf(), artifacts })
+}
+
 #[derive(Debug, Clone)]
 pub struct SpecDocument {
     pub path: PathBuf,
@@ -447,6 +558,99 @@ fn visit(root: &Path, files: &mut Vec<PathBuf>, require_yaml: bool) -> io::Resul
     Ok(())
 }
 
+fn ensure_output_dir_is_empty(output_dir: &Path) -> io::Result<()> {
+    if output_dir.exists() {
+        let mut entries = fs::read_dir(output_dir)?;
+        if entries.next().transpose()?.is_some() {
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                format!("output directory {} must not already contain files", output_dir.display()),
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn record_directory(artifacts: &mut Vec<GeneratedArtifact>, path: PathBuf, description: String) {
+    artifacts.push(GeneratedArtifact { path, kind: GeneratedArtifactKind::Directory, description });
+}
+
+fn write_artifact_file(artifacts: &mut Vec<GeneratedArtifact>, path: PathBuf, contents: String, description: String) -> io::Result<()> {
+    fs::write(&path, contents)?;
+    artifacts.push(GeneratedArtifact { path, kind: GeneratedArtifactKind::File, description });
+    Ok(())
+}
+
+fn render_project_readme(project: &ProjectSpecDocument, plan: &PlanOutput) -> String {
+    let module_lines = if project.spec.modules.is_empty() {
+        "- none".to_string()
+    } else {
+        project.spec.modules.iter().map(|module| format!("- `{}`: {}", module.id, module.purpose)).collect::<Vec<_>>().join("\n")
+    };
+
+    let workflow_lines = if project.spec.workflows.is_empty() {
+        "- none".to_string()
+    } else {
+        project.spec.workflows.iter().map(|workflow| format!("- `{}`: {}", workflow.id, workflow.purpose)).collect::<Vec<_>>().join("\n")
+    };
+
+    let plan_lines = if plan.steps.is_empty() {
+        "- none".to_string()
+    } else {
+        plan.steps.iter().map(|step| format!("- `{}`: {}", step.id, step.title)).collect::<Vec<_>>().join("\n")
+    };
+
+    format!(
+        "# {}\n\n{}\n\n## Modules\n{}\n\n## Workflows\n{}\n\n## Plan Steps\n{}\n",
+        project.metadata.title, project.metadata.summary, module_lines, workflow_lines, plan_lines
+    )
+}
+
+fn render_module_readme(module: &fastspec_model::ModuleSpecDocument) -> String {
+    let input_lines = if module.spec.inputs.is_empty() {
+        "- none".to_string()
+    } else {
+        module.spec.inputs.iter().map(|input| format!("- `{}`: {}", input.name, input.description)).collect::<Vec<_>>().join("\n")
+    };
+    let output_lines = if module.spec.outputs.is_empty() {
+        "- none".to_string()
+    } else {
+        module.spec.outputs.iter().map(|output| format!("- `{}`: {}", output.name, output.description)).collect::<Vec<_>>().join("\n")
+    };
+    let dependency_lines = if module.spec.dependencies.is_empty() {
+        "- none".to_string()
+    } else {
+        module
+            .spec
+            .dependencies
+            .iter()
+            .map(|dependency| format!("- `{}`: {}", dependency.id, dependency.reason))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+
+    format!(
+        "# {}\n\n{}\n\n## Purpose\n{}\n\n## Inputs\n{}\n\n## Outputs\n{}\n\n## Dependencies\n{}\n",
+        module.metadata.title, module.metadata.summary, module.spec.purpose, input_lines, output_lines, dependency_lines
+    )
+}
+
+fn render_workflow_stub(project: &ProjectSpecDocument, workflow: &fastspec_model::IdPurpose, plan: &PlanOutput) -> String {
+    let relevant_steps = plan
+        .steps
+        .iter()
+        .filter(|step| step.phase == PlanPhase::Workflow && step.id == format!("workflow:{}", workflow.id))
+        .map(|step| format!("- `{}`: {}", step.id, step.title))
+        .collect::<Vec<_>>();
+    let step_lines = if relevant_steps.is_empty() { "- none".to_string() } else { relevant_steps.join("\n") };
+
+    format!(
+        "# Workflow: {}\n\nProject: `{}`\n\n## Purpose\n{}\n\n## Planned Steps\n{}\n",
+        workflow.id, project.metadata.id, workflow.purpose, step_lines
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -455,7 +659,9 @@ mod tests {
 
     use fastspec_model::SpecKind;
 
-    use super::{export_graph, export_plan, parse_spec_file, validate_findings, validate_spec_tree};
+    use super::{
+        GeneratedArtifactKind, export_graph, export_plan, generate_scaffold, parse_spec_file, validate_findings, validate_spec_tree,
+    };
 
     #[test]
     fn validates_archlint_example_tree() {
@@ -566,6 +772,44 @@ mod tests {
             plan.steps.iter().any(|step| step.id == "module:web" && step.depends_on.iter().any(|dependency| dependency == "module:api"))
         );
         assert!(plan.steps.iter().any(|step| step.id == "workflow:plan"));
+    }
+
+    #[test]
+    fn generates_scaffold_for_example_tree() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/archlint-reproduction/specs");
+        let output_dir = unique_temp_dir("generated-scaffold");
+
+        let output = generate_scaffold(&root, &output_dir).expect("scaffold should generate");
+
+        assert_eq!(output.output_dir, output_dir);
+        assert!(output.artifacts.iter().any(|artifact| artifact.path.ends_with("README.md")));
+        assert!(output.artifacts.iter().any(|artifact| artifact.path.ends_with("modules/api/README.md")));
+        assert!(output.artifacts.iter().any(|artifact| artifact.path.ends_with("workflows/plan.md")));
+        assert!(
+            output
+                .artifacts
+                .iter()
+                .any(|artifact| { artifact.path.ends_with("fastspec-manifest.json") && artifact.kind == GeneratedArtifactKind::File })
+        );
+
+        let project_readme = fs::read_to_string(output_dir.join("README.md")).expect("project readme should exist");
+        assert!(project_readme.contains("Archlint Reproduction"));
+        assert!(project_readme.contains("`module:api`"));
+
+        fs::remove_dir_all(output_dir).expect("output dir should be removed");
+    }
+
+    #[test]
+    fn rejects_generation_for_non_empty_output_dir() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/archlint-reproduction/specs");
+        let output_dir = unique_temp_dir("non-empty-scaffold");
+        fs::create_dir_all(&output_dir).expect("output dir should be created");
+        fs::write(output_dir.join("existing.txt"), "occupied").expect("existing file should write");
+
+        let error = generate_scaffold(&root, &output_dir).expect_err("non-empty output dir should fail");
+        assert!(error.to_string().contains("must not already contain files"));
+
+        fs::remove_dir_all(output_dir).expect("output dir should be removed");
     }
 
     fn unique_temp_file(name: &str) -> PathBuf {

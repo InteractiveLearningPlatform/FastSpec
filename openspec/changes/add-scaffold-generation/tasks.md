@@ -1,0 +1,6 @@
+- [x] Add scaffold generation data structures and filesystem writer in `crates/fastspec-core`
+- [x] Build deterministic project, module, workflow, and manifest outputs from a validation-clean plan
+- [x] Extend the CLI parser and command dispatcher with `generate --out <dir>` support
+- [x] Add human-readable and JSON renderers for generation output and error handling
+- [x] Add CLI integration tests covering successful generation, JSON output, and invalid-tree rejection
+- [x] Update CLI documentation for the new generation command
