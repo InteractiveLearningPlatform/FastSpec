@@ -17,6 +17,13 @@ Architecture:
 - domain types in `internal/domain`
 - adapters for HTTP, storage, document import, and spec indexing in `internal/adapters`
 
+Platform roadmap:
+
+- marketplace, hybrid retrieval, and production-ops definitions live in
+  `docs/speclist-platform-ops.md`
+- the domain package now includes marketplace asset and storage port definitions
+  for the PostgreSQL, ClickHouse, Valkey, and Qdrant baseline
+
 Run locally:
 
 ```bash

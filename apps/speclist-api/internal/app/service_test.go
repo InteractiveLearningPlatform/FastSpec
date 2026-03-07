@@ -139,6 +139,43 @@ func TestExportDraftWritesMarkdownAndSidecar(t *testing.T) {
 	}
 }
 
+func TestExportDraftWritesTypedFastSpecYAML(t *testing.T) {
+	service := NewService(&memoryStore{}, stubDOCXImporter{}, stubConfluenceImporter{}, stubIndexer{}, "")
+	targetDir := t.TempDir()
+
+	_, err := service.ExportDraft(context.Background(), domain.DraftExportRequest{
+		Draft: domain.DraftSpec{
+			Title:       "Structured YAML Draft",
+			Query:       "typed yaml export",
+			Summary:     "Draft summary",
+			SourceCount: 2,
+			Sections: []domain.DraftSection{
+				{Heading: "Why", Body: "Need stronger YAML export.", Citations: []string{"notes.docx > Why"}},
+				{Heading: "Context", Body: "Support durable spec refinement.", Citations: []string{"notes.docx > Context"}},
+				{Heading: "Proposed Requirements", Body: "- MUST reflect: Preserve requirement structure"},
+			},
+		},
+		Format:     domain.ExportFormatFastSpecYAML,
+		TargetDir:  targetDir,
+		TargetName: "structured-yaml-draft",
+	})
+	if err != nil {
+		t.Fatalf("yaml export failed: %v", err)
+	}
+
+	contents, err := os.ReadFile(filepath.Join(targetDir, "structured-yaml-draft.fastspec.yaml"))
+	if err != nil {
+		t.Fatalf("read exported yaml: %v", err)
+	}
+	text := string(contents)
+	if !strings.Contains(text, "kind: SpecDocumentDraft") {
+		t.Fatalf("expected typed draft kind, got: %s", text)
+	}
+	if !strings.Contains(text, "requirements:") || !strings.Contains(text, "statement:") {
+		t.Fatalf("expected structured requirements, got: %s", text)
+	}
+}
+
 func TestExportDraftRejectsOverwrite(t *testing.T) {
 	service := NewService(&memoryStore{}, stubDOCXImporter{}, stubConfluenceImporter{}, stubIndexer{}, "")
 	targetDir := t.TempDir()

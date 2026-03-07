@@ -18,6 +18,17 @@ flowchart LR
     G --> I[Speclist retrieval and draft workbench]
 ```
 
+The next platform layer extends the current corpus index into a shared service
+topology:
+
+- PostgreSQL for marketplace metadata and publication state
+- ClickHouse for ingestion and ranking analytics
+- Valkey for caches, queues, and coordination
+- Qdrant for vector and hybrid retrieval
+- Traefik, CrowdSec, and Trivy-backed validation for production operations
+
+See `docs/speclist-platform-ops.md` for the concrete operating model.
+
 ## Near-Term Modules
 
 - `apps/fastspec-cli/` for the command-line entrypoint
