@@ -74,10 +74,20 @@ type DraftSection struct {
 	Citations []string `json:"citations"`
 }
 
+type DraftPreset string
+
+const (
+	DraftPresetGeneral      DraftPreset = "general"
+	DraftPresetProposal     DraftPreset = "proposal"
+	DraftPresetDesign       DraftPreset = "design"
+	DraftPresetRequirements DraftPreset = "requirements"
+)
+
 type DraftSpec struct {
 	Title       string          `json:"title"`
 	Query       string          `json:"query"`
 	Filters     RetrievalFilter `json:"filters,omitempty"`
+	Preset      DraftPreset     `json:"preset,omitempty"`
 	Format      string          `json:"format"`
 	Summary     string          `json:"summary"`
 	Sections    []DraftSection  `json:"sections"`

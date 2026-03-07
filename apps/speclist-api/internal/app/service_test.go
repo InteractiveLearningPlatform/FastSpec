@@ -94,7 +94,7 @@ func TestDraftSpecIncludesCitations(t *testing.T) {
 	}
 	service := NewService(store, stubDOCXImporter{}, stubConfluenceImporter{}, stubIndexer{}, "")
 
-	draft, err := service.DraftSpec(context.Background(), "confluence drafting", "Speclist Draft", "openspec-markdown", 4, domain.RetrievalFilter{})
+	draft, err := service.DraftSpec(context.Background(), "confluence drafting", "Speclist Draft", "openspec-markdown", 4, domain.RetrievalFilter{}, domain.DraftPresetGeneral)
 	if err != nil {
 		t.Fatalf("draft failed: %v", err)
 	}
@@ -181,7 +181,7 @@ func TestDraftSpecReusesSearchFilters(t *testing.T) {
 	draft, err := service.DraftSpec(context.Background(), "product scope", "Imported Draft", "openspec-markdown", 4, domain.RetrievalFilter{
 		Kinds:  []domain.SourceKind{domain.SourceKindDocx},
 		Origin: domain.SourceOriginImported,
-	})
+	}, domain.DraftPresetGeneral)
 	if err != nil {
 		t.Fatalf("draft failed: %v", err)
 	}
@@ -193,6 +193,61 @@ func TestDraftSpecReusesSearchFilters(t *testing.T) {
 	}
 	if len(draft.Filters.Kinds) != 1 || draft.Filters.Kinds[0] != domain.SourceKindDocx {
 		t.Fatalf("expected docx filter, got %+v", draft.Filters.Kinds)
+	}
+}
+
+func TestDraftSpecSupportsProposalPreset(t *testing.T) {
+	store := &memoryStore{
+		documents: []domain.SourceDocument{
+			{
+				ID:         "doc-1",
+				Kind:       domain.SourceKindDocx,
+				Title:      "Platform Notes",
+				Location:   "notes.docx",
+				ImportedAt: time.Now().UTC(),
+				Chunks: []domain.Chunk{
+					{ID: "chunk-1", SourceID: "doc-1", Section: "Goals", Text: "Support proposal-oriented drafting.", Citation: "notes.docx > Goals"},
+				},
+			},
+		},
+	}
+	service := NewService(store, stubDOCXImporter{}, stubConfluenceImporter{}, stubIndexer{}, "")
+
+	draft, err := service.DraftSpec(context.Background(), "proposal drafting", "Proposal Draft", "openspec-markdown", 4, domain.RetrievalFilter{}, domain.DraftPresetProposal)
+	if err != nil {
+		t.Fatalf("draft failed: %v", err)
+	}
+	if draft.Preset != domain.DraftPresetProposal {
+		t.Fatalf("expected proposal preset, got %s", draft.Preset)
+	}
+	if len(draft.Sections) != 3 || draft.Sections[1].Heading != "What Changes" {
+		t.Fatalf("unexpected proposal sections: %+v", draft.Sections)
+	}
+}
+
+func TestDraftSpecSupportsRequirementsPreset(t *testing.T) {
+	store := &memoryStore{
+		documents: []domain.SourceDocument{
+			{
+				ID:         "doc-1",
+				Kind:       domain.SourceKindDocx,
+				Title:      "Platform Notes",
+				Location:   "notes.docx",
+				ImportedAt: time.Now().UTC(),
+				Chunks: []domain.Chunk{
+					{ID: "chunk-1", SourceID: "doc-1", Section: "Goals", Text: "Support requirement-oriented drafting.", Citation: "notes.docx > Goals"},
+				},
+			},
+		},
+	}
+	service := NewService(store, stubDOCXImporter{}, stubConfluenceImporter{}, stubIndexer{}, "")
+
+	draft, err := service.DraftSpec(context.Background(), "requirements drafting", "Requirements Draft", "openspec-markdown", 4, domain.RetrievalFilter{}, domain.DraftPresetRequirements)
+	if err != nil {
+		t.Fatalf("draft failed: %v", err)
+	}
+	if len(draft.Sections) != 3 || draft.Sections[1].Heading != "Requirements" || draft.Sections[2].Heading != "Scenarios" {
+		t.Fatalf("unexpected requirements sections: %+v", draft.Sections)
 	}
 }
 

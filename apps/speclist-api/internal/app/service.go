@@ -192,7 +192,7 @@ func (s *Service) Search(ctx context.Context, query string, limit int, filters d
 	return domain.RetrievalBundle{Query: query, Filters: normalizeFilters(filters), Results: results}, nil
 }
 
-func (s *Service) DraftSpec(ctx context.Context, query string, title string, format string, limit int, filters domain.RetrievalFilter) (domain.DraftSpec, error) {
+func (s *Service) DraftSpec(ctx context.Context, query string, title string, format string, limit int, filters domain.RetrievalFilter, preset domain.DraftPreset) (domain.DraftSpec, error) {
 	bundle, err := s.Search(ctx, query, limit, filters)
 	if err != nil {
 		return domain.DraftSpec{}, err
@@ -204,29 +204,14 @@ func (s *Service) DraftSpec(ctx context.Context, query string, title string, for
 	if strings.TrimSpace(format) == "" {
 		format = "openspec-markdown"
 	}
-
-	sections := []domain.DraftSection{
-		{
-			Heading:   "Why",
-			Body:      summarizeBundle(bundle.Results, 0, 2),
-			Citations: collectCitations(bundle.Results, 0, 2),
-		},
-		{
-			Heading:   "Context",
-			Body:      summarizeBundle(bundle.Results, 0, min(4, len(bundle.Results))),
-			Citations: collectCitations(bundle.Results, 0, min(4, len(bundle.Results))),
-		},
-		{
-			Heading:   "Proposed Requirements",
-			Body:      summarizeRequirements(bundle.Results),
-			Citations: collectCitations(bundle.Results, 0, min(6, len(bundle.Results))),
-		},
-	}
+	preset = normalizeDraftPreset(preset)
+	sections := buildDraftSections(preset, bundle.Results)
 
 	return domain.DraftSpec{
 		Title:       title,
 		Query:       query,
 		Filters:     bundle.Filters,
+		Preset:      preset,
 		Format:      format,
 		Summary:     fmt.Sprintf("Drafted from %d grounded retrieval result(s).", len(bundle.Results)),
 		Sections:    sections,
@@ -322,6 +307,7 @@ func normalizeDraft(draft domain.DraftSpec) (domain.DraftSpec, error) {
 	draft.Title = strings.TrimSpace(draft.Title)
 	draft.Query = strings.TrimSpace(draft.Query)
 	draft.Summary = strings.TrimSpace(draft.Summary)
+	draft.Preset = normalizeDraftPreset(draft.Preset)
 	if draft.Title == "" {
 		return domain.DraftSpec{}, fmt.Errorf("draft title is required")
 	}
@@ -349,6 +335,45 @@ func normalizeDraft(draft domain.DraftSpec) (domain.DraftSpec, error) {
 	}
 	draft.Sections = sections
 	return draft, nil
+}
+
+func normalizeDraftPreset(preset domain.DraftPreset) domain.DraftPreset {
+	switch preset {
+	case domain.DraftPresetProposal, domain.DraftPresetDesign, domain.DraftPresetRequirements:
+		return preset
+	default:
+		return domain.DraftPresetGeneral
+	}
+}
+
+func buildDraftSections(preset domain.DraftPreset, results []domain.RetrievalResult) []domain.DraftSection {
+	switch preset {
+	case domain.DraftPresetProposal:
+		return []domain.DraftSection{
+			{Heading: "Why", Body: summarizeBundle(results, 0, 2), Citations: collectCitations(results, 0, 2)},
+			{Heading: "What Changes", Body: summarizeRequirements(results), Citations: collectCitations(results, 0, min(6, len(results)))},
+			{Heading: "Impact", Body: summarizeBundle(results, 0, min(4, len(results))), Citations: collectCitations(results, 0, min(4, len(results)))},
+		}
+	case domain.DraftPresetDesign:
+		return []domain.DraftSection{
+			{Heading: "Context", Body: summarizeBundle(results, 0, min(4, len(results))), Citations: collectCitations(results, 0, min(4, len(results)))},
+			{Heading: "Goals / Non-Goals", Body: summarizeRequirements(results), Citations: collectCitations(results, 0, min(5, len(results)))},
+			{Heading: "Decisions", Body: summarizeBundle(results, 0, min(3, len(results))), Citations: collectCitations(results, 0, min(3, len(results)))},
+			{Heading: "Risks / Trade-offs", Body: summarizeBundle(results, 1, min(4, len(results))), Citations: collectCitations(results, 1, min(4, len(results)))},
+		}
+	case domain.DraftPresetRequirements:
+		return []domain.DraftSection{
+			{Heading: "Why", Body: summarizeBundle(results, 0, 2), Citations: collectCitations(results, 0, 2)},
+			{Heading: "Requirements", Body: summarizeRequirements(results), Citations: collectCitations(results, 0, min(6, len(results)))},
+			{Heading: "Scenarios", Body: summarizeScenarios(results), Citations: collectCitations(results, 0, min(4, len(results)))},
+		}
+	default:
+		return []domain.DraftSection{
+			{Heading: "Why", Body: summarizeBundle(results, 0, 2), Citations: collectCitations(results, 0, 2)},
+			{Heading: "Context", Body: summarizeBundle(results, 0, min(4, len(results))), Citations: collectCitations(results, 0, min(4, len(results)))},
+			{Heading: "Proposed Requirements", Body: summarizeRequirements(results), Citations: collectCitations(results, 0, min(6, len(results)))},
+		}
+	}
 }
 
 func (s *Service) ListOpenSpecChanges(_ context.Context) ([]domain.OpenSpecChange, error) {
@@ -447,6 +472,18 @@ func summarizeRequirements(results []domain.RetrievalResult) string {
 	lines := make([]string, 0, min(5, len(results)))
 	for _, result := range results[:min(5, len(results))] {
 		lines = append(lines, fmt.Sprintf("- MUST reflect: %s", clipText(result.Chunk.Text, 160)))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func summarizeScenarios(results []domain.RetrievalResult) string {
+	if len(results) == 0 {
+		return "- WHEN relevant sources are imported\n- THEN add grounded scenarios during review"
+	}
+
+	lines := make([]string, 0, min(3, len(results)))
+	for _, result := range results[:min(3, len(results))] {
+		lines = append(lines, fmt.Sprintf("- WHEN the system handles %s\n- THEN it MUST account for %s", clipText(result.Chunk.Section, 80), clipText(result.Chunk.Text, 140)))
 	}
 	return strings.Join(lines, "\n")
 }
@@ -593,10 +630,10 @@ func renderProposalTemplate(draft domain.DraftSpec) string {
 
 %s
 `,
-		findSectionBody(draft, "Why", draft.Summary),
-		findSectionBody(draft, "Proposed Requirements", draft.Summary),
+		findSectionBodyAny(draft, []string{"Why"}, draft.Summary),
+		findSectionBodyAny(draft, []string{"What Changes", "Proposed Requirements", "Requirements"}, draft.Summary),
 		strings.ToLower(strings.ReplaceAll(draft.Title, " ", "-")),
-		findSectionBody(draft, "Context", draft.Summary),
+		findSectionBodyAny(draft, []string{"Impact", "Context"}, draft.Summary),
 	)) + "\n"
 }
 
@@ -621,14 +658,14 @@ func renderDesignTemplate(draft domain.DraftSpec) string {
 
 - review exported draft assumptions against cited sources
 `,
-		findSectionBody(draft, "Context", draft.Summary),
-		findSectionBody(draft, "Why", draft.Summary),
-		findSectionBody(draft, "Proposed Requirements", draft.Summary),
+		findSectionBodyAny(draft, []string{"Context", "Impact"}, draft.Summary),
+		findSectionBodyAny(draft, []string{"Goals / Non-Goals", "Why"}, draft.Summary),
+		findSectionBodyAny(draft, []string{"Decisions", "Proposed Requirements", "Requirements"}, draft.Summary),
 	)) + "\n"
 }
 
 func renderTasksTemplate(draft domain.DraftSpec) string {
-	lines := bulletize(findSectionBody(draft, "Proposed Requirements", draft.Summary))
+	lines := bulletize(findSectionBodyAny(draft, []string{"Proposed Requirements", "Requirements", "What Changes"}, draft.Summary))
 	if len(lines) == 0 {
 		lines = []string{"refine exported draft into implementation tasks"}
 	}
@@ -659,8 +696,8 @@ func renderSpecTemplate(draft domain.DraftSpec, capabilityName string) string {
 %s
 `,
 		titleizeRequirement(requirementName),
-		findSectionBody(draft, "Why", draft.Summary),
-		indentLines(findSectionBody(draft, "Proposed Requirements", draft.Summary)),
+		findSectionBodyAny(draft, []string{"Why", "Context"}, draft.Summary),
+		indentLines(findSectionBodyAny(draft, []string{"Requirements", "Proposed Requirements", "What Changes"}, draft.Summary)),
 	)) + "\n"
 }
 
@@ -679,6 +716,9 @@ func renderFastSpecYAML(draft domain.DraftSpec, targetName string) string {
 	builder.WriteString(yamlQuote(draft.Summary))
 	builder.WriteString("\n")
 	builder.WriteString("  draftType: \"structured-spec\"\n")
+	builder.WriteString("  preset: ")
+	builder.WriteString(yamlQuote(string(draft.Preset)))
+	builder.WriteString("\n")
 	builder.WriteString("spec:\n")
 	builder.WriteString("  query: ")
 	builder.WriteString(yamlQuote(draft.Query))
@@ -687,19 +727,19 @@ func renderFastSpecYAML(draft domain.DraftSpec, targetName string) string {
 	builder.WriteString(fmt.Sprintf("%d", draft.SourceCount))
 	builder.WriteString("\n")
 	builder.WriteString("  rationale: |-\n")
-	for _, line := range strings.Split(findSectionBody(draft, "Why", draft.Summary), "\n") {
+	for _, line := range strings.Split(findSectionBodyAny(draft, []string{"Why", "Goals / Non-Goals"}, draft.Summary), "\n") {
 		builder.WriteString("    ")
 		builder.WriteString(line)
 		builder.WriteString("\n")
 	}
 	builder.WriteString("  context: |-\n")
-	for _, line := range strings.Split(findSectionBody(draft, "Context", draft.Summary), "\n") {
+	for _, line := range strings.Split(findSectionBodyAny(draft, []string{"Context", "Impact", "Decisions"}, draft.Summary), "\n") {
 		builder.WriteString("    ")
 		builder.WriteString(line)
 		builder.WriteString("\n")
 	}
 	builder.WriteString("  requirements:\n")
-	requirements := bulletize(findSectionBody(draft, "Proposed Requirements", draft.Summary))
+	requirements := bulletize(findSectionBodyAny(draft, []string{"Requirements", "Proposed Requirements", "What Changes"}, draft.Summary))
 	if len(requirements) == 0 {
 		requirements = []string{draft.Summary}
 	}
@@ -744,6 +784,7 @@ func renderCitationSidecar(draft domain.DraftSpec, primaryPath string) map[strin
 	return map[string]any{
 		"title":    draft.Title,
 		"query":    draft.Query,
+		"preset":   draft.Preset,
 		"artifact": primaryPath,
 		"sections": sections,
 	}
@@ -774,9 +815,15 @@ func yamlQuote(input string) string {
 }
 
 func findSectionBody(draft domain.DraftSpec, heading string, fallback string) string {
+	return findSectionBodyAny(draft, []string{heading}, fallback)
+}
+
+func findSectionBodyAny(draft domain.DraftSpec, headings []string, fallback string) string {
 	for _, section := range draft.Sections {
-		if strings.EqualFold(section.Heading, heading) {
-			return section.Body
+		for _, heading := range headings {
+			if strings.EqualFold(section.Heading, heading) {
+				return section.Body
+			}
 		}
 	}
 	return fallback

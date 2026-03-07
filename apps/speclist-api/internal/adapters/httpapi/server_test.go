@@ -91,6 +91,51 @@ func TestExportEndpointWritesArtifacts(t *testing.T) {
 	}
 }
 
+func TestDraftEndpointAcceptsPreset(t *testing.T) {
+	service := app.NewService(seededStore{
+		documents: []domain.SourceDocument{
+			{
+				ID:       "doc-1",
+				Kind:     domain.SourceKindDocx,
+				Title:    "Imported Search Notes",
+				Location: "notes/search.docx",
+				Chunks: []domain.Chunk{
+					{ID: "chunk-2", SourceID: "doc-1", Section: "Notes", Text: "Imported notes mention search.", Citation: "notes.docx > Notes"},
+				},
+			},
+		},
+	}, emptyDOCX{}, emptyConfluence{}, emptyIndexer{}, "")
+	server := NewServer(service, "")
+
+	body, err := json.Marshal(map[string]any{
+		"query":  "proposal drafting",
+		"title":  "Proposal Draft",
+		"format": "openspec-markdown",
+		"limit":  4,
+		"preset": "proposal",
+	})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/drafts", bytes.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("unexpected status %d: %s", recorder.Code, recorder.Body.String())
+	}
+
+	var draft domain.DraftSpec
+	if err := json.Unmarshal(recorder.Body.Bytes(), &draft); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if draft.Preset != domain.DraftPresetProposal {
+		t.Fatalf("expected proposal preset, got %s", draft.Preset)
+	}
+}
+
 func TestSearchEndpointAppliesFilters(t *testing.T) {
 	service := app.NewService(seededStore{
 		documents: []domain.SourceDocument{
