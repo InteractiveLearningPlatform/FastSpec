@@ -10,6 +10,7 @@ Capabilities:
 - search grounded retrieval context
 - review generated draft specs and their citations
 - export reviewed drafts into durable files through the backend
+- target active OpenSpec change artifacts during export
 
 Run locally:
 

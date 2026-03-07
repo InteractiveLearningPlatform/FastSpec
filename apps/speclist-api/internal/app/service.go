@@ -17,6 +17,7 @@ type Service struct {
 	docxImporter       domain.DocxImporter
 	confluenceImporter domain.ConfluenceImporter
 	specIndexer        domain.SpecIndexer
+	repoRoot           string
 }
 
 func NewService(
@@ -24,12 +25,14 @@ func NewService(
 	docxImporter domain.DocxImporter,
 	confluenceImporter domain.ConfluenceImporter,
 	specIndexer domain.SpecIndexer,
+	repoRoot string,
 ) *Service {
 	return &Service{
 		store:              store,
 		docxImporter:       docxImporter,
 		confluenceImporter: confluenceImporter,
 		specIndexer:        specIndexer,
+		repoRoot:           repoRoot,
 	}
 }
 
@@ -175,12 +178,6 @@ func (s *Service) DraftSpec(ctx context.Context, query string, title string, for
 }
 
 func (s *Service) ExportDraft(_ context.Context, request domain.DraftExportRequest) (domain.DraftExportResult, error) {
-	if strings.TrimSpace(request.TargetDir) == "" {
-		return domain.DraftExportResult{}, fmt.Errorf("target_dir is required")
-	}
-	if strings.TrimSpace(request.TargetName) == "" {
-		return domain.DraftExportResult{}, fmt.Errorf("target_name is required")
-	}
 	if strings.TrimSpace(request.Draft.Title) == "" {
 		return domain.DraftExportResult{}, fmt.Errorf("draft title is required")
 	}
@@ -193,29 +190,47 @@ func (s *Service) ExportDraft(_ context.Context, request domain.DraftExportReque
 		format = domain.ExportFormatOpenSpecMarkdown
 	}
 
-	targetDir := filepath.Clean(request.TargetDir)
-	targetName := sanitizeFilename(request.TargetName)
-	if targetName == "" {
-		return domain.DraftExportResult{}, fmt.Errorf("target_name must contain letters or numbers")
-	}
-
 	var primaryPath string
 	var sidecarPath string
 	var primaryContents string
-	switch format {
-	case domain.ExportFormatOpenSpecMarkdown:
-		primaryPath = filepath.Join(targetDir, targetName+".md")
-		sidecarPath = filepath.Join(targetDir, targetName+".sources.json")
+	if request.OpenSpecTarget != nil {
+		if format != domain.ExportFormatOpenSpecMarkdown {
+			return domain.DraftExportResult{}, fmt.Errorf("openspec change targets require openspec-markdown format")
+		}
+		var err error
+		primaryPath, sidecarPath, err = s.resolveOpenSpecTarget(*request.OpenSpecTarget)
+		if err != nil {
+			return domain.DraftExportResult{}, err
+		}
 		primaryContents = renderOpenSpecMarkdown(request.Draft)
-	case domain.ExportFormatFastSpecYAML:
-		primaryPath = filepath.Join(targetDir, targetName+".fastspec.yaml")
-		sidecarPath = filepath.Join(targetDir, targetName+".sources.json")
-		primaryContents = renderFastSpecYAML(request.Draft, targetName)
-	default:
-		return domain.DraftExportResult{}, fmt.Errorf("unsupported export format %q", format)
+	} else {
+		if strings.TrimSpace(request.TargetDir) == "" {
+			return domain.DraftExportResult{}, fmt.Errorf("target_dir is required")
+		}
+		if strings.TrimSpace(request.TargetName) == "" {
+			return domain.DraftExportResult{}, fmt.Errorf("target_name is required")
+		}
+		targetDir := filepath.Clean(request.TargetDir)
+		targetName := sanitizeFilename(request.TargetName)
+		if targetName == "" {
+			return domain.DraftExportResult{}, fmt.Errorf("target_name must contain letters or numbers")
+		}
+
+		switch format {
+		case domain.ExportFormatOpenSpecMarkdown:
+			primaryPath = filepath.Join(targetDir, targetName+".md")
+			sidecarPath = filepath.Join(targetDir, targetName+".sources.json")
+			primaryContents = renderOpenSpecMarkdown(request.Draft)
+		case domain.ExportFormatFastSpecYAML:
+			primaryPath = filepath.Join(targetDir, targetName+".fastspec.yaml")
+			sidecarPath = filepath.Join(targetDir, targetName+".sources.json")
+			primaryContents = renderFastSpecYAML(request.Draft, targetName)
+		default:
+			return domain.DraftExportResult{}, fmt.Errorf("unsupported export format %q", format)
+		}
 	}
 
-	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(primaryPath), 0o755); err != nil {
 		return domain.DraftExportResult{}, err
 	}
 	if err := ensureFilesDoNotExist(primaryPath, sidecarPath); err != nil {
@@ -240,6 +255,36 @@ func (s *Service) ExportDraft(_ context.Context, request domain.DraftExportReque
 			{Path: sidecarPath, Description: "citation sidecar"},
 		},
 	}, nil
+}
+
+func (s *Service) ListOpenSpecChanges(_ context.Context) ([]domain.OpenSpecChange, error) {
+	if strings.TrimSpace(s.repoRoot) == "" {
+		return nil, fmt.Errorf("repo root is not configured")
+	}
+	changesDir := filepath.Join(s.repoRoot, "openspec", "changes")
+	entries, err := os.ReadDir(changesDir)
+	if err != nil {
+		return nil, err
+	}
+
+	changes := make([]domain.OpenSpecChange, 0)
+	for _, entry := range entries {
+		if !entry.IsDir() || entry.Name() == "archive" {
+			continue
+		}
+		changePath := filepath.Join(changesDir, entry.Name())
+		if _, err := os.Stat(filepath.Join(changePath, ".openspec.yaml")); err != nil {
+			continue
+		}
+		changes = append(changes, domain.OpenSpecChange{
+			Name:      entry.Name(),
+			Artifacts: []string{"proposal", "design", "tasks", "spec"},
+		})
+	}
+	slices.SortFunc(changes, func(left, right domain.OpenSpecChange) int {
+		return strings.Compare(left.Name, right.Name)
+	})
+	return changes, nil
 }
 
 func summarizeBundle(results []domain.RetrievalResult, start int, end int) string {
@@ -459,4 +504,42 @@ func sanitizeFilename(input string) string {
 func yamlQuote(input string) string {
 	input = strings.ReplaceAll(input, "\"", "\\\"")
 	return "\"" + input + "\""
+}
+
+func (s *Service) resolveOpenSpecTarget(target domain.OpenSpecExportTarget) (string, string, error) {
+	if strings.TrimSpace(s.repoRoot) == "" {
+		return "", "", fmt.Errorf("repo root is not configured")
+	}
+	if strings.TrimSpace(target.ChangeName) == "" || strings.TrimSpace(target.Artifact) == "" {
+		return "", "", fmt.Errorf("openspec change_name and artifact are required")
+	}
+
+	changePath := filepath.Join(s.repoRoot, "openspec", "changes", target.ChangeName)
+	if _, err := os.Stat(filepath.Join(changePath, ".openspec.yaml")); err != nil {
+		return "", "", fmt.Errorf("openspec change not found: %s", target.ChangeName)
+	}
+
+	var primaryPath string
+	switch target.Artifact {
+	case "proposal":
+		primaryPath = filepath.Join(changePath, "proposal.md")
+	case "design":
+		primaryPath = filepath.Join(changePath, "design.md")
+	case "tasks":
+		primaryPath = filepath.Join(changePath, "tasks.md")
+	case "spec":
+		if strings.TrimSpace(target.CapabilityName) == "" {
+			return "", "", fmt.Errorf("capability_name is required for spec export")
+		}
+		capability := sanitizeFilename(target.CapabilityName)
+		if capability == "" {
+			return "", "", fmt.Errorf("capability_name must contain letters or numbers")
+		}
+		primaryPath = filepath.Join(changePath, "specs", capability, "spec.md")
+	default:
+		return "", "", fmt.Errorf("unsupported openspec artifact %q", target.Artifact)
+	}
+
+	sidecarPath := strings.TrimSuffix(primaryPath, filepath.Ext(primaryPath)) + ".sources.json"
+	return primaryPath, sidecarPath, nil
 }

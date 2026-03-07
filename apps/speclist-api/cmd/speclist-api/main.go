@@ -24,6 +24,7 @@ func main() {
 		ingest.NewDOCXImporter(),
 		ingest.NewConfluenceImporter(nil),
 		specs.NewIndexer(),
+		repoRoot,
 	)
 	server := httpapi.NewServer(service, repoRoot)
 

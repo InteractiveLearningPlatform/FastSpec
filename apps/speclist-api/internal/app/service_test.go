@@ -62,7 +62,7 @@ func TestSearchReturnsGroundedResults(t *testing.T) {
 			},
 		},
 	}
-	service := NewService(store, stubDOCXImporter{}, stubConfluenceImporter{}, stubIndexer{})
+	service := NewService(store, stubDOCXImporter{}, stubConfluenceImporter{}, stubIndexer{}, "")
 
 	bundle, err := service.Search(context.Background(), "retrieval citations", 5)
 	if err != nil {
@@ -91,7 +91,7 @@ func TestDraftSpecIncludesCitations(t *testing.T) {
 			},
 		},
 	}
-	service := NewService(store, stubDOCXImporter{}, stubConfluenceImporter{}, stubIndexer{})
+	service := NewService(store, stubDOCXImporter{}, stubConfluenceImporter{}, stubIndexer{}, "")
 
 	draft, err := service.DraftSpec(context.Background(), "confluence drafting", "Speclist Draft", "openspec-markdown", 4)
 	if err != nil {
@@ -106,7 +106,7 @@ func TestDraftSpecIncludesCitations(t *testing.T) {
 }
 
 func TestExportDraftWritesMarkdownAndSidecar(t *testing.T) {
-	service := NewService(&memoryStore{}, stubDOCXImporter{}, stubConfluenceImporter{}, stubIndexer{})
+	service := NewService(&memoryStore{}, stubDOCXImporter{}, stubConfluenceImporter{}, stubIndexer{}, "")
 	targetDir := t.TempDir()
 
 	result, err := service.ExportDraft(context.Background(), domain.DraftExportRequest{
@@ -139,7 +139,7 @@ func TestExportDraftWritesMarkdownAndSidecar(t *testing.T) {
 }
 
 func TestExportDraftRejectsOverwrite(t *testing.T) {
-	service := NewService(&memoryStore{}, stubDOCXImporter{}, stubConfluenceImporter{}, stubIndexer{})
+	service := NewService(&memoryStore{}, stubDOCXImporter{}, stubConfluenceImporter{}, stubIndexer{}, "")
 	targetDir := t.TempDir()
 	path := filepath.Join(targetDir, "existing.md")
 	if err := os.WriteFile(path, []byte("occupied"), 0o644); err != nil {
@@ -162,5 +162,70 @@ func TestExportDraftRejectsOverwrite(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected overwrite rejection")
+	}
+}
+
+func TestExportDraftWritesToOpenSpecChangeTarget(t *testing.T) {
+	repoRoot := t.TempDir()
+	changeDir := filepath.Join(repoRoot, "openspec", "changes", "demo-change")
+	if err := os.MkdirAll(changeDir, 0o755); err != nil {
+		t.Fatalf("mkdir change dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(changeDir, ".openspec.yaml"), []byte("schema: spec-driven\n"), 0o644); err != nil {
+		t.Fatalf("write change marker: %v", err)
+	}
+
+	service := NewService(&memoryStore{}, stubDOCXImporter{}, stubConfluenceImporter{}, stubIndexer{}, repoRoot)
+	result, err := service.ExportDraft(context.Background(), domain.DraftExportRequest{
+		Draft: domain.DraftSpec{
+			Title:       "Proposal Draft",
+			Query:       "change target export",
+			Summary:     "Proposal summary",
+			SourceCount: 1,
+			Sections: []domain.DraftSection{
+				{Heading: "Why", Body: "Need to export into an active change.", Citations: []string{"notes.docx > Why"}},
+			},
+		},
+		Format: domain.ExportFormatOpenSpecMarkdown,
+		OpenSpecTarget: &domain.OpenSpecExportTarget{
+			ChangeName: "demo-change",
+			Artifact:   "proposal",
+		},
+	})
+	if err != nil {
+		t.Fatalf("export to change target failed: %v", err)
+	}
+	if len(result.Artifacts) != 2 {
+		t.Fatalf("expected 2 artifacts, got %d", len(result.Artifacts))
+	}
+	if _, err := os.Stat(filepath.Join(changeDir, "proposal.md")); err != nil {
+		t.Fatalf("expected proposal export: %v", err)
+	}
+}
+
+func TestListOpenSpecChangesReturnsActiveChanges(t *testing.T) {
+	repoRoot := t.TempDir()
+	active := filepath.Join(repoRoot, "openspec", "changes", "demo-change")
+	archived := filepath.Join(repoRoot, "openspec", "changes", "archive", "old-change")
+	if err := os.MkdirAll(active, 0o755); err != nil {
+		t.Fatalf("mkdir active dir: %v", err)
+	}
+	if err := os.MkdirAll(archived, 0o755); err != nil {
+		t.Fatalf("mkdir archived dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(active, ".openspec.yaml"), []byte("schema: spec-driven\n"), 0o644); err != nil {
+		t.Fatalf("write active marker: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(archived, ".openspec.yaml"), []byte("schema: spec-driven\n"), 0o644); err != nil {
+		t.Fatalf("write archive marker: %v", err)
+	}
+
+	service := NewService(&memoryStore{}, stubDOCXImporter{}, stubConfluenceImporter{}, stubIndexer{}, repoRoot)
+	changes, err := service.ListOpenSpecChanges(context.Background())
+	if err != nil {
+		t.Fatalf("list changes failed: %v", err)
+	}
+	if len(changes) != 1 || changes[0].Name != "demo-change" {
+		t.Fatalf("unexpected changes: %+v", changes)
 	}
 }

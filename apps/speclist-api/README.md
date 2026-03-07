@@ -9,6 +9,7 @@ Responsibilities:
 - index existing FastSpec and OpenSpec artifacts from the repo
 - expose retrieval bundles and draft-generation endpoints
 - export reviewed drafts into OpenSpec markdown or FastSpec YAML files
+- export reviewed drafts directly into active OpenSpec change artifact paths
 
 Architecture:
 

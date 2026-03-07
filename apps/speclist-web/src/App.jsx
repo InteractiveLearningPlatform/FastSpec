@@ -9,13 +9,18 @@ const initialConfluence = {
 };
 
 const initialExport = {
+  mode: "filesystem",
   format: "openspec-markdown",
   target_dir: "./exports",
   target_name: "speclist-draft",
+  change_name: "",
+  artifact: "proposal",
+  capability_name: "",
 };
 
 export default function App() {
   const [sources, setSources] = useState([]);
+  const [changes, setChanges] = useState([]);
   const [searchQuery, setSearchQuery] = useState("spec retrieval citations");
   const [searchResults, setSearchResults] = useState([]);
   const [draftTitle, setDraftTitle] = useState("Speclist Draft");
@@ -33,9 +38,14 @@ export default function App() {
 
   async function refreshSources() {
     try {
-      const response = await fetch(`${apiBase}/api/v1/sources`);
-      const payload = await response.json();
-      setSources(payload.sources ?? []);
+      const [sourcesResponse, changesResponse] = await Promise.all([
+        fetch(`${apiBase}/api/v1/sources`),
+        fetch(`${apiBase}/api/v1/openspec/changes`),
+      ]);
+      const sourcesPayload = await sourcesResponse.json();
+      const changesPayload = await changesResponse.json();
+      setSources(sourcesPayload.sources ?? []);
+      setChanges(changesPayload.changes ?? []);
     } catch (fetchError) {
       setError(fetchError.message);
     }
@@ -122,6 +132,7 @@ export default function App() {
       setExportConfig((current) => ({
         ...current,
         target_name: slugify(payload.title || draftTitle),
+        change_name: current.change_name || changes[0]?.name || "",
       }));
       setMessage(`Generated draft from ${payload.source_count} result(s)`);
     });
@@ -138,12 +149,7 @@ export default function App() {
       const response = await fetch(`${apiBase}/api/v1/exports`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          draft,
-          format: exportConfig.format,
-          target_dir: exportConfig.target_dir,
-          target_name: exportConfig.target_name,
-        }),
+        body: JSON.stringify(buildExportPayload(draft, exportConfig)),
       });
       const payload = await assertOk(response);
       setExportResult(payload);
@@ -269,22 +275,63 @@ export default function App() {
               <form className="stack exportForm" onSubmit={handleExport}>
                 <h3>Export Reviewed Draft</h3>
                 <select
+                  value={exportConfig.mode}
+                  onChange={(event) => setExportConfig({ ...exportConfig, mode: event.target.value })}
+                >
+                  <option value="filesystem">Filesystem target</option>
+                  <option value="openspec-change">OpenSpec change target</option>
+                </select>
+                <select
                   value={exportConfig.format}
                   onChange={(event) => setExportConfig({ ...exportConfig, format: event.target.value })}
                 >
                   <option value="openspec-markdown">OpenSpec markdown</option>
                   <option value="fastspec-yaml">FastSpec YAML</option>
                 </select>
-                <input
-                  value={exportConfig.target_dir}
-                  onChange={(event) => setExportConfig({ ...exportConfig, target_dir: event.target.value })}
-                  placeholder="Target directory"
-                />
-                <input
-                  value={exportConfig.target_name}
-                  onChange={(event) => setExportConfig({ ...exportConfig, target_name: event.target.value })}
-                  placeholder="Target name"
-                />
+                {exportConfig.mode === "filesystem" ? (
+                  <>
+                    <input
+                      value={exportConfig.target_dir}
+                      onChange={(event) => setExportConfig({ ...exportConfig, target_dir: event.target.value })}
+                      placeholder="Target directory"
+                    />
+                    <input
+                      value={exportConfig.target_name}
+                      onChange={(event) => setExportConfig({ ...exportConfig, target_name: event.target.value })}
+                      placeholder="Target name"
+                    />
+                  </>
+                ) : (
+                  <>
+                    <select
+                      value={exportConfig.change_name}
+                      onChange={(event) => setExportConfig({ ...exportConfig, change_name: event.target.value })}
+                    >
+                      <option value="">Select change</option>
+                      {changes.map((change) => (
+                        <option key={change.name} value={change.name}>
+                          {change.name}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={exportConfig.artifact}
+                      onChange={(event) => setExportConfig({ ...exportConfig, artifact: event.target.value })}
+                    >
+                      <option value="proposal">proposal.md</option>
+                      <option value="design">design.md</option>
+                      <option value="tasks">tasks.md</option>
+                      <option value="spec">specs/&lt;capability&gt;/spec.md</option>
+                    </select>
+                    {exportConfig.artifact === "spec" && (
+                      <input
+                        value={exportConfig.capability_name}
+                        onChange={(event) => setExportConfig({ ...exportConfig, capability_name: event.target.value })}
+                        placeholder="Capability name"
+                      />
+                    )}
+                  </>
+                )}
                 <button type="submit" disabled={loading}>
                   Export draft
                 </button>
@@ -341,4 +388,25 @@ function slugify(input) {
     .trim()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
+}
+
+function buildExportPayload(draft, exportConfig) {
+  if (exportConfig.mode === "openspec-change") {
+    return {
+      draft,
+      format: "openspec-markdown",
+      openspec_target: {
+        change_name: exportConfig.change_name,
+        artifact: exportConfig.artifact,
+        capability_name: exportConfig.capability_name || undefined,
+      },
+    };
+  }
+
+  return {
+    draft,
+    format: exportConfig.format,
+    target_dir: exportConfig.target_dir,
+    target_name: exportConfig.target_name,
+  };
 }
