@@ -8,6 +8,14 @@ const initialConfluence = {
   token: "",
 };
 
+const sourceKinds = ["docx", "confluence", "spec"];
+
+const initialFilters = {
+  kinds: [],
+  origin: "",
+  location_contains: "",
+};
+
 const initialExport = {
   mode: "filesystem",
   format: "openspec-markdown",
@@ -23,6 +31,7 @@ export default function App() {
   const [changes, setChanges] = useState([]);
   const [searchQuery, setSearchQuery] = useState("spec retrieval citations");
   const [searchResults, setSearchResults] = useState([]);
+  const [filters, setFilters] = useState(initialFilters);
   const [draftTitle, setDraftTitle] = useState("Speclist Draft");
   const [draft, setDraft] = useState(null);
   const [exportResult, setExportResult] = useState(null);
@@ -105,7 +114,7 @@ export default function App() {
       const response = await fetch(`${apiBase}/api/v1/search`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: searchQuery, limit: 8 }),
+        body: JSON.stringify({ query: searchQuery, limit: 8, filters }),
       });
       const payload = await assertOk(response);
       setSearchResults(payload.results ?? []);
@@ -124,6 +133,7 @@ export default function App() {
           title: draftTitle,
           format: "openspec-markdown",
           limit: 8,
+          filters,
         }),
       });
       const payload = await assertOk(response);
@@ -232,10 +242,38 @@ export default function App() {
           <h2>Retrieve Context</h2>
           <form className="stack" onSubmit={handleSearch}>
             <textarea value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} rows={4} />
+            <fieldset className="stack">
+              <legend>Source filters</legend>
+              <div className="sourceList">
+                {sourceKinds.map((kind) => (
+                  <label key={kind} className="sourceCard">
+                    <span>{kind}</span>
+                    <input
+                      type="checkbox"
+                      checked={filters.kinds.includes(kind)}
+                      onChange={() =>
+                        setFilters((current) => ({ ...current, kinds: toggleFilterKind(current.kinds, kind) }))
+                      }
+                    />
+                  </label>
+                ))}
+              </div>
+              <select value={filters.origin} onChange={(event) => setFilters({ ...filters, origin: event.target.value })}>
+                <option value="">All origins</option>
+                <option value="imported">Imported docs</option>
+                <option value="repository">Repository specs</option>
+              </select>
+              <input
+                value={filters.location_contains}
+                onChange={(event) => setFilters({ ...filters, location_contains: event.target.value })}
+                placeholder="Location contains"
+              />
+            </fieldset>
             <button type="submit" disabled={loading}>
               Search corpus
             </button>
           </form>
+          <p className="empty">Applied filters: {describeFilters(filters)}</p>
           <div className="results">
             {searchResults.map((result) => (
               <article key={result.chunk.id} className="resultCard">
@@ -409,4 +447,22 @@ function buildExportPayload(draft, exportConfig) {
     target_dir: exportConfig.target_dir,
     target_name: exportConfig.target_name,
   };
+}
+
+function toggleFilterKind(currentKinds, kind) {
+  return currentKinds.includes(kind) ? currentKinds.filter((entry) => entry !== kind) : [...currentKinds, kind];
+}
+
+function describeFilters(filters) {
+  const parts = [];
+  if (filters.kinds.length > 0) {
+    parts.push(`kinds=${filters.kinds.join(", ")}`);
+  }
+  if (filters.origin) {
+    parts.push(`origin=${filters.origin}`);
+  }
+  if (filters.location_contains.trim()) {
+    parts.push(`location~${filters.location_contains.trim()}`);
+  }
+  return parts.length > 0 ? parts.join(" | ") : "none";
 }

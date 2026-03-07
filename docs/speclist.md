@@ -26,6 +26,7 @@ It exists to bridge the gap between:
 4. Generate reviewable draft specs with source citations.
 5. Export accepted drafts into durable OpenSpec markdown or FastSpec YAML files.
 6. Optionally target an active OpenSpec change artifact directly instead of a generic output path.
+7. Narrow retrieval and drafting with source-kind, source-origin, and location filters when the corpus mixes imported docs and repository specs.
 
 ## Design Constraints
 
@@ -35,6 +36,7 @@ It exists to bridge the gap between:
 - Treat generated drafts as reviewable candidates, not final truth.
 - Require explicit export destinations and avoid silent overwrite of existing files.
 - Keep the workbench as one platform surface, not the full product boundary.
+- Keep retrieval filters simple and source-oriented so they stay compatible with later platform-scale search work.
 
 ## Local Development
 
@@ -72,3 +74,16 @@ OpenSpec-aware export currently supports writing into active change targets for:
 When exporting into those OpenSpec targets, Speclist now renders typed artifact templates instead of a single generic markdown draft shape.
 
 The backend requires an explicit target directory and target name for every export.
+
+## Retrieval Filters
+
+Speclist search and draft generation now support the same compact retrieval filters:
+
+- `kinds`
+  limit results to selected source kinds such as `docx`, `confluence`, or `spec`
+- `origin`
+  choose between `imported` sources and `repository` specs
+- `location_contains`
+  keep only sources whose location contains the provided substring
+
+The workbench keeps these filters visible and applies them to both retrieval and drafting so the generated draft stays grounded in the intended subset of sources.

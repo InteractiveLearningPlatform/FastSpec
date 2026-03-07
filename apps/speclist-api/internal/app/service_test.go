@@ -65,7 +65,7 @@ func TestSearchReturnsGroundedResults(t *testing.T) {
 	}
 	service := NewService(store, stubDOCXImporter{}, stubConfluenceImporter{}, stubIndexer{}, "")
 
-	bundle, err := service.Search(context.Background(), "retrieval citations", 5)
+	bundle, err := service.Search(context.Background(), "retrieval citations", 5, domain.RetrievalFilter{})
 	if err != nil {
 		t.Fatalf("search failed: %v", err)
 	}
@@ -94,7 +94,7 @@ func TestDraftSpecIncludesCitations(t *testing.T) {
 	}
 	service := NewService(store, stubDOCXImporter{}, stubConfluenceImporter{}, stubIndexer{}, "")
 
-	draft, err := service.DraftSpec(context.Background(), "confluence drafting", "Speclist Draft", "openspec-markdown", 4)
+	draft, err := service.DraftSpec(context.Background(), "confluence drafting", "Speclist Draft", "openspec-markdown", 4, domain.RetrievalFilter{})
 	if err != nil {
 		t.Fatalf("draft failed: %v", err)
 	}
@@ -103,6 +103,96 @@ func TestDraftSpecIncludesCitations(t *testing.T) {
 	}
 	if len(draft.Sections[0].Citations) == 0 {
 		t.Fatal("expected citations in draft")
+	}
+}
+
+func TestSearchAppliesSourceFilters(t *testing.T) {
+	store := &memoryStore{
+		documents: []domain.SourceDocument{
+			{
+				ID:         "spec-1",
+				Kind:       domain.SourceKindSpec,
+				Title:      "Repository Retrieval",
+				Location:   "openspec/specs/retrieval.md",
+				ImportedAt: time.Now().UTC(),
+				Chunks: []domain.Chunk{
+					{ID: "chunk-1", SourceID: "spec-1", Section: "Requirement", Text: "Repository specs SHOULD stay searchable.", Citation: "retrieval.md > Requirement"},
+				},
+			},
+			{
+				ID:         "doc-1",
+				Kind:       domain.SourceKindDocx,
+				Title:      "Imported Notes",
+				Location:   "notes/retrieval-guidance.docx",
+				ImportedAt: time.Now().UTC(),
+				Chunks: []domain.Chunk{
+					{ID: "chunk-2", SourceID: "doc-1", Section: "Notes", Text: "Imported notes also mention retrieval.", Citation: "notes.docx > Notes"},
+				},
+			},
+		},
+	}
+	service := NewService(store, stubDOCXImporter{}, stubConfluenceImporter{}, stubIndexer{}, "")
+
+	bundle, err := service.Search(context.Background(), "retrieval searchable", 5, domain.RetrievalFilter{
+		Origin:           domain.SourceOriginRepository,
+		LocationContains: "openspec/specs",
+	})
+	if err != nil {
+		t.Fatalf("search failed: %v", err)
+	}
+	if len(bundle.Results) != 1 {
+		t.Fatalf("expected 1 filtered result, got %d", len(bundle.Results))
+	}
+	if bundle.Results[0].Source.Kind != domain.SourceKindSpec {
+		t.Fatalf("expected spec source, got %s", bundle.Results[0].Source.Kind)
+	}
+	if bundle.Filters.Origin != domain.SourceOriginRepository {
+		t.Fatalf("expected repository origin, got %s", bundle.Filters.Origin)
+	}
+}
+
+func TestDraftSpecReusesSearchFilters(t *testing.T) {
+	store := &memoryStore{
+		documents: []domain.SourceDocument{
+			{
+				ID:         "docx-1",
+				Kind:       domain.SourceKindDocx,
+				Title:      "Imported Product Notes",
+				Location:   "product/notes.docx",
+				ImportedAt: time.Now().UTC(),
+				Chunks: []domain.Chunk{
+					{ID: "chunk-1", SourceID: "docx-1", Section: "Goals", Text: "Imported notes define the product scope.", Citation: "notes.docx > Goals"},
+				},
+			},
+			{
+				ID:         "spec-1",
+				Kind:       domain.SourceKindSpec,
+				Title:      "Repository Plan",
+				Location:   "openspec/specs/plan.md",
+				ImportedAt: time.Now().UTC(),
+				Chunks: []domain.Chunk{
+					{ID: "chunk-2", SourceID: "spec-1", Section: "Context", Text: "Repository specs should not appear here.", Citation: "plan.md > Context"},
+				},
+			},
+		},
+	}
+	service := NewService(store, stubDOCXImporter{}, stubConfluenceImporter{}, stubIndexer{}, "")
+
+	draft, err := service.DraftSpec(context.Background(), "product scope", "Imported Draft", "openspec-markdown", 4, domain.RetrievalFilter{
+		Kinds:  []domain.SourceKind{domain.SourceKindDocx},
+		Origin: domain.SourceOriginImported,
+	})
+	if err != nil {
+		t.Fatalf("draft failed: %v", err)
+	}
+	if draft.SourceCount != 1 {
+		t.Fatalf("expected 1 filtered source result, got %d", draft.SourceCount)
+	}
+	if draft.Filters.Origin != domain.SourceOriginImported {
+		t.Fatalf("expected imported origin, got %s", draft.Filters.Origin)
+	}
+	if len(draft.Filters.Kinds) != 1 || draft.Filters.Kinds[0] != domain.SourceKindDocx {
+		t.Fatalf("expected docx filter, got %+v", draft.Filters.Kinds)
 	}
 }
 

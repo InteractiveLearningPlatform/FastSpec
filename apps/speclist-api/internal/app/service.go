@@ -81,7 +81,7 @@ func (s *Service) ListSources(ctx context.Context) ([]domain.SourceDocument, err
 	return s.store.List(ctx)
 }
 
-func (s *Service) Search(ctx context.Context, query string, limit int) (domain.RetrievalBundle, error) {
+func (s *Service) Search(ctx context.Context, query string, limit int, filters domain.RetrievalFilter) (domain.RetrievalBundle, error) {
 	if strings.TrimSpace(query) == "" {
 		return domain.RetrievalBundle{}, fmt.Errorf("query is required")
 	}
@@ -98,6 +98,9 @@ func (s *Service) Search(ctx context.Context, query string, limit int) (domain.R
 	terms := tokenize(query)
 	results := make([]domain.RetrievalResult, 0)
 	for _, document := range documents {
+		if !matchesFilters(document, filters) {
+			continue
+		}
 		source := domain.SourceStub{
 			ID:       document.ID,
 			Kind:     document.Kind,
@@ -133,11 +136,11 @@ func (s *Service) Search(ctx context.Context, query string, limit int) (domain.R
 		results = results[:limit]
 	}
 
-	return domain.RetrievalBundle{Query: query, Results: results}, nil
+	return domain.RetrievalBundle{Query: query, Filters: normalizeFilters(filters), Results: results}, nil
 }
 
-func (s *Service) DraftSpec(ctx context.Context, query string, title string, format string, limit int) (domain.DraftSpec, error) {
-	bundle, err := s.Search(ctx, query, limit)
+func (s *Service) DraftSpec(ctx context.Context, query string, title string, format string, limit int, filters domain.RetrievalFilter) (domain.DraftSpec, error) {
+	bundle, err := s.Search(ctx, query, limit, filters)
 	if err != nil {
 		return domain.DraftSpec{}, err
 	}
@@ -170,6 +173,7 @@ func (s *Service) DraftSpec(ctx context.Context, query string, title string, for
 	return domain.DraftSpec{
 		Title:       title,
 		Query:       query,
+		Filters:     bundle.Filters,
 		Format:      format,
 		Summary:     fmt.Sprintf("Drafted from %d grounded retrieval result(s).", len(bundle.Results)),
 		Sections:    sections,
@@ -300,6 +304,49 @@ func summarizeBundle(results []domain.RetrievalResult, start int, end int) strin
 		lines = append(lines, fmt.Sprintf("- %s (%s): %s", result.Source.Title, result.Chunk.Citation, clipText(result.Chunk.Text, 180)))
 	}
 	return strings.Join(lines, "\n")
+}
+
+func matchesFilters(document domain.SourceDocument, filters domain.RetrievalFilter) bool {
+	normalized := normalizeFilters(filters)
+	if len(normalized.Kinds) > 0 && !slices.Contains(normalized.Kinds, document.Kind) {
+		return false
+	}
+	if normalized.Origin != "" && sourceOrigin(document) != normalized.Origin {
+		return false
+	}
+	if normalized.LocationContains != "" && !strings.Contains(strings.ToLower(document.Location), normalized.LocationContains) {
+		return false
+	}
+	return true
+}
+
+func normalizeFilters(filters domain.RetrievalFilter) domain.RetrievalFilter {
+	normalized := domain.RetrievalFilter{
+		Origin:           filters.Origin,
+		LocationContains: strings.ToLower(strings.TrimSpace(filters.LocationContains)),
+	}
+	if len(filters.Kinds) > 0 {
+		seen := make(map[domain.SourceKind]struct{}, len(filters.Kinds))
+		for _, kind := range filters.Kinds {
+			if kind == "" {
+				continue
+			}
+			if _, ok := seen[kind]; ok {
+				continue
+			}
+			seen[kind] = struct{}{}
+			normalized.Kinds = append(normalized.Kinds, kind)
+		}
+		slices.Sort(normalized.Kinds)
+	}
+	return normalized
+}
+
+func sourceOrigin(document domain.SourceDocument) domain.SourceOrigin {
+	if document.Kind == domain.SourceKindSpec {
+		return domain.SourceOriginRepository
+	}
+	return domain.SourceOriginImported
 }
 
 func summarizeRequirements(results []domain.RetrievalResult) string {
