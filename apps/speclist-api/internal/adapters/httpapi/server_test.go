@@ -148,3 +148,45 @@ func TestSearchEndpointAppliesFilters(t *testing.T) {
 		t.Fatalf("expected spec result, got %s", result.Results[0].Source.Kind)
 	}
 }
+
+func TestInspectCitationEndpointReturnsSourceContext(t *testing.T) {
+	service := app.NewService(seededStore{
+		documents: []domain.SourceDocument{
+			{
+				ID:       "doc-1",
+				Kind:     domain.SourceKindDocx,
+				Title:    "Imported Search Notes",
+				Location: "notes/search.docx",
+				Chunks: []domain.Chunk{
+					{ID: "chunk-2", SourceID: "doc-1", Section: "Notes", Text: "Imported notes mention search.", Citation: "notes.docx > Notes"},
+				},
+			},
+		},
+	}, emptyDOCX{}, emptyConfluence{}, emptyIndexer{}, "")
+	server := NewServer(service, "")
+
+	body, err := json.Marshal(map[string]any{"citation": "notes.docx > Notes"})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/citations/inspect", bytes.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("unexpected status %d: %s", recorder.Code, recorder.Body.String())
+	}
+
+	var inspection domain.CitationInspection
+	if err := json.Unmarshal(recorder.Body.Bytes(), &inspection); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if inspection.Chunk.Section != "Notes" {
+		t.Fatalf("expected notes section, got %s", inspection.Chunk.Section)
+	}
+	if inspection.Source.Location != "notes/search.docx" {
+		t.Fatalf("expected source location, got %s", inspection.Source.Location)
+	}
+}

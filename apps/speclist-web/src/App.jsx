@@ -34,6 +34,7 @@ export default function App() {
   const [filters, setFilters] = useState(initialFilters);
   const [draftTitle, setDraftTitle] = useState("Speclist Draft");
   const [draft, setDraft] = useState(null);
+  const [citationInspection, setCitationInspection] = useState(null);
   const [exportResult, setExportResult] = useState(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -167,6 +168,19 @@ export default function App() {
     });
   }
 
+  async function inspectCitation(citation) {
+    await runAction(async () => {
+      const response = await fetch(`${apiBase}/api/v1/citations/inspect`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ citation }),
+      });
+      const payload = await assertOk(response);
+      setCitationInspection(payload);
+      setMessage(`Loaded citation ${citation}`);
+    });
+  }
+
   async function runAction(action) {
     setLoading(true);
     setError("");
@@ -286,6 +300,9 @@ export default function App() {
                   <span>{result.chunk.citation}</span>
                 </div>
                 <p>{result.chunk.text}</p>
+                <button type="button" className="secondary" onClick={() => inspectCitation(result.chunk.citation)}>
+                  Inspect citation
+                </button>
               </article>
             ))}
             {searchResults.length === 0 && <p className="empty">No retrieval bundle loaded yet.</p>}
@@ -366,6 +383,20 @@ export default function App() {
                     rows={3}
                     placeholder="One citation per line"
                   />
+                  {section.citations.length > 0 && (
+                    <div className="sourceList">
+                      {section.citations.map((citation) => (
+                        <button
+                          key={`${citation}-${index}`}
+                          type="button"
+                          className="secondary"
+                          onClick={() => inspectCitation(citation)}
+                        >
+                          Inspect {citation}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </section>
               ))}
               <button
@@ -476,6 +507,35 @@ export default function App() {
             ))}
             {sources.length === 0 && <p className="empty">Import a document or index repository specs to populate the corpus.</p>}
           </div>
+        </section>
+
+        <section className="panel wide">
+          <div className="resultMeta">
+            <h2>Citation Inspector</h2>
+            {citationInspection && (
+              <button type="button" className="secondary" onClick={() => setCitationInspection(null)}>
+                Clear
+              </button>
+            )}
+          </div>
+          {citationInspection ? (
+            <article className="resultCard">
+              <div className="resultMeta">
+                <strong>{citationInspection.source.title}</strong>
+                <span>{citationInspection.citation}</span>
+              </div>
+              <p>{citationInspection.source.location}</p>
+              <p>
+                <strong>Section:</strong> {citationInspection.chunk.section}
+              </p>
+              <p>{citationInspection.chunk.text}</p>
+              {Object.keys(citationInspection.source.metadata ?? {}).length > 0 && (
+                <pre>{JSON.stringify(citationInspection.source.metadata, null, 2)}</pre>
+              )}
+            </article>
+          ) : (
+            <p className="empty">Inspect a citation from a search result or draft section to load its grounded source context.</p>
+          )}
         </section>
       </main>
     </div>
