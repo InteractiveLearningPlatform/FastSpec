@@ -28,9 +28,10 @@ It exists to bridge the gap between:
 6. Inspect any citation to reopen the grounded source chunk behind it.
 7. Inspect indexed sources directly to review source metadata and chunk inventories.
 8. Choose a draft preset to start proposal, design, or requirements-oriented review from a better section structure.
-9. Export accepted drafts into durable OpenSpec markdown or FastSpec YAML files.
-10. Optionally target an active OpenSpec change artifact directly instead of a generic output path.
-11. Narrow retrieval and drafting with source-kind, source-origin, and location filters when the corpus mixes imported docs and repository specs.
+9. Compare the current edited draft against the original generated draft before export.
+10. Export accepted drafts into durable OpenSpec markdown or FastSpec YAML files.
+11. Optionally target an active OpenSpec change artifact directly instead of a generic output path.
+12. Narrow retrieval and drafting with source-kind, source-origin, and location filters when the corpus mixes imported docs and repository specs.
 
 ## Design Constraints
 
@@ -45,6 +46,7 @@ It exists to bridge the gap between:
 - Keep citation verification close to the draft review workflow.
 - Keep source-level corpus review available from the indexed source list.
 - Let draft generation start from a small set of intentional review presets.
+- Keep edit review explicit by showing how the current draft differs from the generated draft.
 
 ## Local Development
 
@@ -122,6 +124,20 @@ Speclist draft generation now supports a small preset set:
   starts with `Why`, `Requirements`, and `Scenarios`
 
 The selected preset is stored on the generated draft payload and remains visible during review and export.
+
+## Draft Diff Review
+
+Speclist now keeps the originally generated draft alongside the live editable draft in the workbench.
+
+The draft diff panel highlights:
+
+- title changes
+- summary changes
+- preset changes
+- section changes by position
+- added or removed sections
+
+This keeps the review step explicit before export without introducing server-side draft versioning.
 
 ## Citation Inspection
 
