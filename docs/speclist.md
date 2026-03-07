@@ -38,9 +38,10 @@ It exists to bridge the gap between:
 16. Collapse or reopen the whole draft in one action when section-level folding is still too granular.
 17. Navigate long drafts through a compact outline instead of scrolling section by section.
 18. Keep draft orientation by marking the active section in the outline during review.
-19. Export accepted drafts into durable OpenSpec markdown or FastSpec YAML files.
-20. Optionally target an active OpenSpec change artifact directly instead of a generic output path.
-21. Narrow retrieval and drafting with source-kind, source-origin, and location filters when the corpus mixes imported docs and repository specs.
+19. Filter dense draft outlines down to matching or non-ready sections without changing the draft itself.
+20. Export accepted drafts into durable OpenSpec markdown or FastSpec YAML files.
+21. Optionally target an active OpenSpec change artifact directly instead of a generic output path.
+22. Narrow retrieval and drafting with source-kind, source-origin, and location filters when the corpus mixes imported docs and repository specs.
 
 ## Design Constraints
 
@@ -65,6 +66,7 @@ It exists to bridge the gap between:
 - Let reviewers switch between focused and full-draft review modes quickly.
 - Let reviewers jump directly to a section in long drafts.
 - Let reviewers see where they are in the draft after navigation.
+- Let reviewers narrow outline noise without mutating the draft.
 
 ## Local Development
 
@@ -252,6 +254,7 @@ The outline:
 - lists the current sections in order
 - shows review status and collapsed state context
 - marks the currently active section
+- supports heading and non-ready filtering
 - jumps to the selected section in the draft
 - reopens the selected section if it was collapsed
 
