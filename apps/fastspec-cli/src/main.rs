@@ -2,12 +2,13 @@ use std::env;
 use std::path::Path;
 use std::process::ExitCode;
 
-use fastspec_core::{InspectOutput, SummaryOutput, parse_spec_path, validate_spec_tree};
+use fastspec_core::{InspectOutput, SummaryOutput, ValidationOutput, parse_spec_path, validate_findings, validate_spec_tree};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CommandKind {
     Summary,
     Inspect,
+    Validate,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,7 +33,8 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<CliCommand, Stri
     let kind = match args.next().as_deref() {
         Some("summary") => CommandKind::Summary,
         Some("inspect") => CommandKind::Inspect,
-        _ => return Err("usage: fastspec <summary|inspect> [--json] <path>".to_string()),
+        Some("validate") => CommandKind::Validate,
+        _ => return Err("usage: fastspec <summary|inspect|validate> [--json] <path>".to_string()),
     };
 
     let mut json = false;
@@ -48,7 +50,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<CliCommand, Stri
     }
 
     let Some(path) = path else {
-        return Err("usage: fastspec <summary|inspect> [--json] <path>".to_string());
+        return Err("usage: fastspec <summary|inspect|validate> [--json] <path>".to_string());
     };
 
     Ok(CliCommand { kind, path, json })
@@ -58,6 +60,7 @@ fn run_command(command: CliCommand) -> ExitCode {
     match command.kind {
         CommandKind::Summary => print_summary(Path::new(&command.path), command.json),
         CommandKind::Inspect => inspect_path(Path::new(&command.path), command.json),
+        CommandKind::Validate => validate_path(Path::new(&command.path), command.json),
     }
 }
 
@@ -105,11 +108,30 @@ fn inspect_path(path: &Path, json: bool) -> ExitCode {
     }
 }
 
+fn validate_path(path: &Path, json: bool) -> ExitCode {
+    match validate_findings(path) {
+        Ok(output) => {
+            if json {
+                let exit = if output.valid { ExitCode::SUCCESS } else { ExitCode::from(1) };
+                return print_json_with_status(&output, exit);
+            }
+
+            print_validation_text(&output);
+            if output.valid { ExitCode::SUCCESS } else { ExitCode::from(1) }
+        }
+        Err(error) => print_error(&error.to_string(), json),
+    }
+}
+
 fn print_json<T: serde::Serialize>(value: &T) -> ExitCode {
+    print_json_with_status(value, ExitCode::SUCCESS)
+}
+
+fn print_json_with_status<T: serde::Serialize>(value: &T, exit: ExitCode) -> ExitCode {
     match serde_json::to_string_pretty(value) {
         Ok(json) => {
             println!("{json}");
-            ExitCode::SUCCESS
+            exit
         }
         Err(error) => {
             eprintln!("failed to serialize JSON output: {error}");
@@ -129,6 +151,19 @@ fn print_error(message: &str, json: bool) -> ExitCode {
     }
 
     ExitCode::from(1)
+}
+
+fn print_validation_text(output: &ValidationOutput) {
+    if output.valid {
+        println!("valid: true");
+        println!("findings: none");
+        return;
+    }
+
+    println!("valid: false");
+    for finding in &output.findings {
+        println!("{}\t{}\t{}\t{}", format!("{:?}", finding.severity).to_lowercase(), finding.code, finding.path.display(), finding.message);
+    }
 }
 
 #[cfg(test)]
@@ -151,5 +186,11 @@ mod tests {
     fn rejects_extra_positional_arguments() {
         let error = parse_args(["summary".to_string(), "specs".to_string(), "extra".to_string()]).expect_err("extra args should fail");
         assert!(error.contains("usage: fastspec"));
+    }
+
+    #[test]
+    fn parses_validate_command() {
+        let command = parse_args(["validate".to_string(), "--json".to_string(), "specs".to_string()]).expect("args should parse");
+        assert_eq!(command, CliCommand { kind: CommandKind::Validate, path: "specs".to_string(), json: true });
     }
 }
