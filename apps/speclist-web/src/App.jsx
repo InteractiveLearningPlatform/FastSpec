@@ -277,6 +277,16 @@ export default function App() {
     }));
   }
 
+  function collapseAllSections() {
+    setCollapsedSections(
+      Object.fromEntries((draft?.sections || []).map((_, index) => [index, true])),
+    );
+  }
+
+  function expandAllSections() {
+    setCollapsedSections({});
+  }
+
   function resetReview() {
     if (!originalDraft) {
       return;
@@ -566,6 +576,12 @@ export default function App() {
                 }
               >
                 Add section
+              </button>
+              <button type="button" className="secondary" onClick={collapseAllSections}>
+                Collapse all
+              </button>
+              <button type="button" className="secondary" onClick={expandAllSections}>
+                Expand all
               </button>
               <button type="button" className="secondary" onClick={resetReview}>
                 Reset to generated draft
