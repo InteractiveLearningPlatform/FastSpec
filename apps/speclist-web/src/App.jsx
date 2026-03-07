@@ -479,6 +479,7 @@ export default function App() {
               </div>
               <form className="stack exportForm" onSubmit={handleExport}>
                 <h3>Export Reviewed Draft</h3>
+                {renderExportReadiness(draft, originalDraft, reviewFlags)}
                 <select
                   value={exportConfig.mode}
                   onChange={(event) => setExportConfig({ ...exportConfig, mode: event.target.value })}
@@ -882,4 +883,88 @@ function shiftFlagsAfterRemoval(flags, removedIndex) {
     }
   });
   return shifted;
+}
+
+function renderExportReadiness(draft, originalDraft, reviewFlags) {
+  const readiness = computeExportReadiness(draft, originalDraft, reviewFlags);
+  return (
+    <div className="resultCard">
+      <strong>Export Readiness: {titleCase(readiness.status)}</strong>
+      {readiness.blockers.length > 0 && (
+        <div>
+          <p>Blockers</p>
+          <ul>
+            {readiness.blockers.map((item) => (
+              <li key={`blocker-${item}`}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {readiness.warnings.length > 0 && (
+        <div>
+          <p>Warnings</p>
+          <ul>
+            {readiness.warnings.map((item) => (
+              <li key={`warning-${item}`}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {readiness.blockers.length === 0 && readiness.warnings.length === 0 && (
+        <p className="empty">No blockers or warnings. The draft is ready for export.</p>
+      )}
+    </div>
+  );
+}
+
+function computeExportReadiness(draft, originalDraft, reviewFlags) {
+  const blockers = [];
+  const warnings = [];
+
+  if (!String(draft?.title || "").trim()) {
+    blockers.push("Draft title is empty.");
+  }
+  if (!String(draft?.summary || "").trim()) {
+    blockers.push("Draft summary is empty.");
+  }
+  if (!draft?.sections?.length) {
+    blockers.push("Draft has no sections.");
+  }
+
+  (draft?.sections || []).forEach((section, index) => {
+    if (!String(section.heading || "").trim()) {
+      blockers.push(`Section ${index + 1} is missing a heading.`);
+    }
+    if (!String(section.body || "").trim()) {
+      blockers.push(`Section ${index + 1} is missing body content.`);
+    }
+    if ((section.citations || []).length === 0) {
+      warnings.push(`Section ${index + 1} has no citations.`);
+    }
+
+    const flag = reviewFlags[index];
+    if (!flag) {
+      return;
+    }
+    if (flag.status === "blocked") {
+      blockers.push(`Section ${index + 1} is marked blocked.`);
+    }
+    if (flag.status === "needs-work") {
+      warnings.push(`Section ${index + 1} is marked needs-work.`);
+    }
+    if (String(flag.note || "").trim()) {
+      warnings.push(`Section ${index + 1} has a review note.`);
+    }
+  });
+
+  if (originalDraft && JSON.stringify(originalDraft) === JSON.stringify(draft)) {
+    warnings.push("Draft is unchanged from the originally generated version.");
+  }
+
+  const status = blockers.length > 0 ? "blocked" : warnings.length > 0 ? "warning" : "ready";
+  return { status, blockers: uniqueItems(blockers), warnings: uniqueItems(warnings) };
+}
+
+function uniqueItems(items) {
+  return [...new Set(items)];
 }
