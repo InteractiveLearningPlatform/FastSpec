@@ -9,6 +9,7 @@ const initialConfluence = {
 };
 
 const sourceKinds = ["docx", "confluence", "spec"];
+const draftPresets = ["general", "proposal", "design", "requirements"];
 
 const initialFilters = {
   kinds: [],
@@ -33,6 +34,7 @@ export default function App() {
   const [searchResults, setSearchResults] = useState([]);
   const [filters, setFilters] = useState(initialFilters);
   const [draftTitle, setDraftTitle] = useState("Speclist Draft");
+  const [draftPreset, setDraftPreset] = useState("general");
   const [draft, setDraft] = useState(null);
   const [citationInspection, setCitationInspection] = useState(null);
   const [sourceDetail, setSourceDetail] = useState(null);
@@ -136,6 +138,7 @@ export default function App() {
           format: "openspec-markdown",
           limit: 8,
           filters,
+          preset: draftPreset,
         }),
       });
       const payload = await assertOk(response);
@@ -327,6 +330,13 @@ export default function App() {
           <h2>Create Draft</h2>
           <form className="stack" onSubmit={handleDraft}>
             <input value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} placeholder="Draft title" />
+            <select value={draftPreset} onChange={(event) => setDraftPreset(event.target.value)}>
+              {draftPresets.map((preset) => (
+                <option key={preset} value={preset}>
+                  {titleCase(preset)} preset
+                </option>
+              ))}
+            </select>
             <button type="submit" disabled={loading}>
               Draft spec
             </button>
@@ -334,6 +344,7 @@ export default function App() {
           {draft ? (
             <div className="draft">
               <div className="stack">
+                <p className="empty">Preset: {titleCase(draft.preset || "general")}</p>
                 <input
                   value={draft.title}
                   onChange={(event) => updateDraft((current) => ({ ...current, title: event.target.value }))}
@@ -664,4 +675,12 @@ function splitCitations(value) {
     .split("\n")
     .map((citation) => citation.trim())
     .filter(Boolean);
+}
+
+function titleCase(input) {
+  return String(input)
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }

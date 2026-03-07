@@ -224,12 +224,13 @@ func (s *Server) handleDraft(writer http.ResponseWriter, request *http.Request) 
 		Format  string                 `json:"format"`
 		Limit   int                    `json:"limit"`
 		Filters domain.RetrievalFilter `json:"filters"`
+		Preset  domain.DraftPreset     `json:"preset"`
 	}
 	if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
 		writeError(writer, http.StatusBadRequest, err)
 		return
 	}
-	draft, err := s.service.DraftSpec(request.Context(), payload.Query, payload.Title, payload.Format, payload.Limit, payload.Filters)
+	draft, err := s.service.DraftSpec(request.Context(), payload.Query, payload.Title, payload.Format, payload.Limit, payload.Filters, payload.Preset)
 	if err != nil {
 		writeError(writer, http.StatusBadRequest, err)
 		return

@@ -27,9 +27,10 @@ It exists to bridge the gap between:
 5. Review and edit draft titles, summaries, sections, and citations in the workbench.
 6. Inspect any citation to reopen the grounded source chunk behind it.
 7. Inspect indexed sources directly to review source metadata and chunk inventories.
-8. Export accepted drafts into durable OpenSpec markdown or FastSpec YAML files.
-9. Optionally target an active OpenSpec change artifact directly instead of a generic output path.
-10. Narrow retrieval and drafting with source-kind, source-origin, and location filters when the corpus mixes imported docs and repository specs.
+8. Choose a draft preset to start proposal, design, or requirements-oriented review from a better section structure.
+9. Export accepted drafts into durable OpenSpec markdown or FastSpec YAML files.
+10. Optionally target an active OpenSpec change artifact directly instead of a generic output path.
+11. Narrow retrieval and drafting with source-kind, source-origin, and location filters when the corpus mixes imported docs and repository specs.
 
 ## Design Constraints
 
@@ -43,6 +44,7 @@ It exists to bridge the gap between:
 - Let reviewers refine generated drafts before export, while keeping export validation on the backend.
 - Keep citation verification close to the draft review workflow.
 - Keep source-level corpus review available from the indexed source list.
+- Let draft generation start from a small set of intentional review presets.
 
 ## Local Development
 
@@ -105,6 +107,21 @@ After generation, the workbench keeps the draft in editable state:
 - reviewers can add or remove sections before export
 
 This editing flow remains in-memory only. The backend validates the edited draft during export so invalid reviewer edits do not produce partial artifacts.
+
+## Draft Presets
+
+Speclist draft generation now supports a small preset set:
+
+- `general`
+  the original grounded draft structure with `Why`, `Context`, and `Proposed Requirements`
+- `proposal`
+  starts with `Why`, `What Changes`, and `Impact`
+- `design`
+  starts with `Context`, `Goals / Non-Goals`, `Decisions`, and `Risks / Trade-offs`
+- `requirements`
+  starts with `Why`, `Requirements`, and `Scenarios`
+
+The selected preset is stored on the generated draft payload and remains visible during review and export.
 
 ## Citation Inspection
 
