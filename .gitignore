@@ -22,6 +22,10 @@ target
 
 # Editor and local tool caches
 .DS_Store
+.env
+*.env.local
+deploy/compose/.env
+deploy/compose/.env.ci
 .idea/
 .vscode/
 .cache/

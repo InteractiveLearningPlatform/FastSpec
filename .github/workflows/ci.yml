@@ -83,3 +83,52 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  platform-ops:
+    name: Platform Ops
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Generate CI env file
+        run: |
+          cat <<'EOF' > deploy/compose/.env.ci
+          TRAEFIK_DOMAIN=speclist.example.test
+          TRAEFIK_ACME_EMAIL=ops@example.test
+          TRAEFIK_TLS_ENABLED=true
+          SPECLIST_API_IMAGE=ghcr.io/interactivelearningplatform/fastspec/speclist-api:ci
+          SPECLIST_WEB_IMAGE=ghcr.io/interactivelearningplatform/fastspec/speclist-web:ci
+          POSTGRES_DB=speclist
+          POSTGRES_USER=speclist
+          POSTGRES_PASSWORD=Postgres_Str0ng!123
+          CLICKHOUSE_DB=speclist
+          CLICKHOUSE_USER=default
+          CLICKHOUSE_PASSWORD=Clickhouse_Str0ng!123
+          VALKEY_PASSWORD=Valkey_Str0ng!123
+          QDRANT_API_KEY=Qdrant_Str0ng!123
+          CROWDSEC_ENROLL_KEY=CrowdsecEnroll_Str0ng!123
+          CROWDSEC_BOUNCER_KEY=CrowdsecBouncer_Str0ng!123
+          VAULT_ADDR=https://vault.example.test
+          VAULT_ROLE=speclist-platform
+          SPECLIST_REPO_ROOT=/workspace
+          EOF
+          cp deploy/compose/.env.ci deploy/compose/.env
+
+      - name: Run preflight validator
+        run: python3 deploy/compose/preflight/validate_config.py --env-file deploy/compose/.env.ci --compose-file deploy/compose/compose.platform.yml
+
+      - name: Validate compose topology
+        run: docker compose --env-file deploy/compose/.env.ci -f deploy/compose/compose.platform.yml config > /tmp/speclist-compose.yaml
+
+      - name: Build API image
+        run: docker build -t speclist-api:test apps/speclist-api
+
+      - name: Build web image
+        run: docker build -t speclist-web:test apps/speclist-web
+
+      - name: Lint Helm chart
+        run: helm lint deploy/helm/speclist-platform

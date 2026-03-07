@@ -81,12 +81,24 @@ GitHub Actions now validates each stack independently on pushes and pull request
 - Rust: format, clippy, and workspace tests
 - Go: `go test ./...` for `apps/speclist-api`
 - Web: `npm ci` and `npm run build` for `apps/speclist-web`
+- Platform ops: compose preflight validation, Docker image builds, and Helm chart linting
 
 To publish release artifacts, push a version tag such as `v0.1.0`. The release workflow packages:
 
 - the `fastspec` Linux CLI binary
 - the `speclist-api` Linux service binary
 - the built `speclist-web` static bundle
+- the `speclist-platform` Helm chart
+
+This repo also includes a self-hosted Jenkins pipeline in `Jenkinsfile`. The Jenkins path mirrors the same baseline:
+
+- Rust format, clippy, and tests
+- Go API tests
+- web install and production build
+- platform ops validation for compose preflight, compose rendering, and Helm lint
+- security scanning with `cargo audit`, `govulncheck`, `npm audit`, and Trivy config scanning
+- release packaging for the CLI, API binary, web bundle, and Helm chart
+- optional Kubernetes deployment through Helm on a self-hosted runner with Docker and kubeconfig access
 
 ## Security Automation
 
@@ -100,6 +112,19 @@ GitHub Actions also runs a dedicated security workflow for `main`, pull requests
 - `npm audit --omit=dev --audit-level=high` for production web dependencies
 
 Dependabot is configured to open weekly update PRs for GitHub Actions, Rust crates, Go modules, and npm packages.
+
+## Platform Ops Baseline
+
+The `add-speclist-platform-ops` change now has executable repository assets:
+
+- `deploy/compose/compose.platform.yml`
+  production-oriented compose topology with Traefik, CrowdSec, Trivy, PostgreSQL, ClickHouse, Valkey, Qdrant, and startup-blocking preflight validation
+- `deploy/compose/preflight/validate_config.py`
+  validates required secrets, placeholder values, password strength, credential reuse, and hardcoded sensitive compose values before startup
+- `deploy/helm/speclist-platform/`
+  Helm chart baseline for Kubernetes delivery with Vault-agent annotations for runtime secret injection
+- `apps/speclist-api/Dockerfile` and `apps/speclist-web/Dockerfile`
+  container build paths used by the compose and cluster deployment flows
 
 ## Current Scope
 

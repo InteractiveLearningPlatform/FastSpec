@@ -1,0 +1,201 @@
+name: speclist-platform
+
+services:
+  preflight:
+    build:
+      context: ./preflight
+    env_file:
+      - ./.env
+    volumes:
+      - ../..:/workspace:ro
+      - ./:/config:ro
+    command:
+      - python
+      - /app/validate_config.py
+      - --env-file
+      - /config/.env
+      - --compose-file
+      - /workspace/deploy/compose/compose.platform.yml
+    restart: "no"
+
+  postgres:
+    image: postgres:16-alpine
+    depends_on:
+      preflight:
+        condition: service_completed_successfully
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    depends_on:
+      preflight:
+        condition: service_completed_successfully
+    environment:
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8123/ping | grep -q Ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    depends_on:
+      preflight:
+        condition: service_completed_successfully
+    command: ["valkey-server", "--requirepass", "${VALKEY_PASSWORD}"]
+    volumes:
+      - valkey-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "valkey-cli -a \"$${VALKEY_PASSWORD}\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  qdrant:
+    image: qdrant/qdrant:v1.13.4
+    depends_on:
+      preflight:
+        condition: service_completed_successfully
+    environment:
+      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY}
+    volumes:
+      - qdrant-data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:6333/healthz | grep -q healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  crowdsec:
+    image: crowdsecurity/crowdsec:v1.6.4
+    depends_on:
+      preflight:
+        condition: service_completed_successfully
+    environment:
+      COLLECTIONS: crowdsecurity/traefik
+      ENROLL_KEY: ${CROWDSEC_ENROLL_KEY}
+    volumes:
+      - crowdsec-data:/var/lib/crowdsec/data
+      - traefik-logs:/var/log/traefik
+
+  crowdsec-bouncer:
+    image: fbonalair/traefik-crowdsec-bouncer:latest
+    depends_on:
+      crowdsec:
+        condition: service_started
+    environment:
+      CROWDSEC_BOUNCER_API_KEY: ${CROWDSEC_BOUNCER_KEY}
+      CROWDSEC_AGENT_HOST: crowdsec:8080
+
+  speclist-api:
+    build:
+      context: ../../apps/speclist-api
+    image: ${SPECLIST_API_IMAGE}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    environment:
+      SPECLIST_ADDR: :8080
+      SPECLIST_DATA_FILE: /var/lib/speclist/corpus.json
+      SPECLIST_REPO_ROOT: ${SPECLIST_REPO_ROOT}
+    volumes:
+      - speclist-data:/var/lib/speclist
+      - ../..:/workspace:ro
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.speclist-api.rule: Host(`${TRAEFIK_DOMAIN}`) && PathPrefix(`/api`)
+      traefik.http.routers.speclist-api.entrypoints: websecure
+      traefik.http.routers.speclist-api.tls: ${TRAEFIK_TLS_ENABLED}
+      traefik.http.services.speclist-api.loadbalancer.server.port: "8080"
+
+  speclist-web:
+    build:
+      context: ../../apps/speclist-web
+      args:
+        VITE_API_BASE: ""
+    image: ${SPECLIST_WEB_IMAGE}
+    depends_on:
+      speclist-api:
+        condition: service_started
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.speclist-web.rule: Host(`${TRAEFIK_DOMAIN}`)
+      traefik.http.routers.speclist-web.entrypoints: websecure
+      traefik.http.routers.speclist-web.tls: ${TRAEFIK_TLS_ENABLED}
+      traefik.http.services.speclist-web.loadbalancer.server.port: "80"
+
+  traefik:
+    image: traefik:v3.1
+    depends_on:
+      speclist-web:
+        condition: service_started
+      crowdsec-bouncer:
+        condition: service_started
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --api.dashboard=true
+      - --accesslog=true
+      - --certificatesresolvers.letsencrypt.acme.tlschallenge=true
+      - --certificatesresolvers.letsencrypt.acme.email=${TRAEFIK_ACME_EMAIL}
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik-letsencrypt:/letsencrypt
+      - traefik-logs:/var/log/traefik
+
+  trivy:
+    image: aquasec/trivy:0.57.1
+    profiles: ["security"]
+    depends_on:
+      preflight:
+        condition: service_completed_successfully
+    working_dir: /workspace
+    volumes:
+      - ../..:/workspace:ro
+      - trivy-cache:/root/.cache/trivy
+    command:
+      - config
+      - --exit-code
+      - "1"
+      - --severity
+      - HIGH,CRITICAL
+      - /workspace/deploy/compose/compose.platform.yml
+
+volumes:
+  postgres-data:
+  clickhouse-data:
+  valkey-data:
+  qdrant-data:
+  crowdsec-data:
+  traefik-letsencrypt:
+  traefik-logs:
+  speclist-data:
+  trivy-cache:
