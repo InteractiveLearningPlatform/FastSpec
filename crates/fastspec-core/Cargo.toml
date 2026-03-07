@@ -6,7 +6,7 @@ version.workspace = true
 
 [dependencies]
 fastspec-model = { path = "../fastspec-model" }
+serde = { version = "1", features = ["derive"] }
 
 [lib]
 path = "src/lib.rs"
-
