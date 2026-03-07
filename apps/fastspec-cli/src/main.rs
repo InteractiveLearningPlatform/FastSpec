@@ -3,7 +3,8 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use fastspec_core::{
-    GraphOutput, InspectOutput, SummaryOutput, ValidationOutput, export_graph, parse_spec_path, validate_findings, validate_spec_tree,
+    GraphOutput, InspectOutput, PlanOutput, SummaryOutput, ValidationOutput, export_graph, export_plan, parse_spec_path, validate_findings,
+    validate_spec_tree,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -12,6 +13,7 @@ enum CommandKind {
     Inspect,
     Validate,
     Graph,
+    Plan,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -38,7 +40,8 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<CliCommand, Stri
         Some("inspect") => CommandKind::Inspect,
         Some("validate") => CommandKind::Validate,
         Some("graph") => CommandKind::Graph,
-        _ => return Err("usage: fastspec <summary|inspect|validate|graph> [--json] <path>".to_string()),
+        Some("plan") => CommandKind::Plan,
+        _ => return Err("usage: fastspec <summary|inspect|validate|graph|plan> [--json] <path>".to_string()),
     };
 
     let mut json = false;
@@ -49,12 +52,12 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<CliCommand, Stri
         } else if path.is_none() {
             path = Some(arg);
         } else {
-            return Err("usage: fastspec <summary|inspect|validate|graph> [--json] <path>".to_string());
+            return Err("usage: fastspec <summary|inspect|validate|graph|plan> [--json] <path>".to_string());
         }
     }
 
     let Some(path) = path else {
-        return Err("usage: fastspec <summary|inspect|validate|graph> [--json] <path>".to_string());
+        return Err("usage: fastspec <summary|inspect|validate|graph|plan> [--json] <path>".to_string());
     };
 
     Ok(CliCommand { kind, path, json })
@@ -66,6 +69,7 @@ fn run_command(command: CliCommand) -> ExitCode {
         CommandKind::Inspect => inspect_path(Path::new(&command.path), command.json),
         CommandKind::Validate => validate_path(Path::new(&command.path), command.json),
         CommandKind::Graph => graph_path(Path::new(&command.path), command.json),
+        CommandKind::Plan => plan_path(Path::new(&command.path), command.json),
     }
 }
 
@@ -142,6 +146,20 @@ fn graph_path(path: &Path, json: bool) -> ExitCode {
     }
 }
 
+fn plan_path(path: &Path, json: bool) -> ExitCode {
+    match export_plan(path) {
+        Ok(output) => {
+            if json {
+                return print_json(&output);
+            }
+
+            print_plan_text(&output);
+            ExitCode::SUCCESS
+        }
+        Err(error) => print_error(&error.to_string(), json),
+    }
+}
+
 fn print_json<T: serde::Serialize>(value: &T) -> ExitCode {
     print_json_with_status(value, ExitCode::SUCCESS)
 }
@@ -196,6 +214,16 @@ fn print_graph_text(output: &GraphOutput) {
     }
 }
 
+fn print_plan_text(output: &PlanOutput) {
+    for step in &output.steps {
+        if step.depends_on.is_empty() {
+            println!("{}\t{:?}\t{}", step.id, step.phase, step.title);
+        } else {
+            println!("{}\t{:?}\t{}\tdepends_on={}", step.id, step.phase, step.title, step.depends_on.join(","));
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{CliCommand, CommandKind, parse_args};
@@ -228,5 +256,11 @@ mod tests {
     fn parses_graph_command() {
         let command = parse_args(["graph".to_string(), "--json".to_string(), "specs".to_string()]).expect("args should parse");
         assert_eq!(command, CliCommand { kind: CommandKind::Graph, path: "specs".to_string(), json: true });
+    }
+
+    #[test]
+    fn parses_plan_command() {
+        let command = parse_args(["plan".to_string(), "--json".to_string(), "specs".to_string()]).expect("args should parse");
+        assert_eq!(command, CliCommand { kind: CommandKind::Plan, path: "specs".to_string(), json: true });
     }
 }
