@@ -10,6 +10,7 @@ const initialConfluence = {
 
 const sourceKinds = ["docx", "confluence", "spec"];
 const draftPresets = ["general", "proposal", "design", "requirements"];
+const reviewStatuses = ["ready", "needs-work", "blocked"];
 
 const initialFilters = {
   kinds: [],
@@ -37,6 +38,7 @@ export default function App() {
   const [draftPreset, setDraftPreset] = useState("general");
   const [draft, setDraft] = useState(null);
   const [originalDraft, setOriginalDraft] = useState(null);
+  const [reviewFlags, setReviewFlags] = useState({});
   const [citationInspection, setCitationInspection] = useState(null);
   const [sourceDetail, setSourceDetail] = useState(null);
   const [exportResult, setExportResult] = useState(null);
@@ -145,6 +147,7 @@ export default function App() {
       const payload = await assertOk(response);
       setDraft(payload);
       setOriginalDraft(structuredClone(payload));
+      setReviewFlags({});
       setExportResult(null);
       setExportConfig((current) => ({
         ...current,
@@ -215,6 +218,21 @@ export default function App() {
 
   function updateDraft(updater) {
     setDraft((current) => (current ? updater(current) : current));
+  }
+
+  function updateReviewFlag(index, patch) {
+    setReviewFlags((current) => ({
+      ...current,
+      [index]: { status: "ready", note: "", ...current[index], ...patch },
+    }));
+  }
+
+  function removeSection(index) {
+    updateDraft((current) => ({
+      ...current,
+      sections: current.sections.filter((_, currentIndex) => currentIndex !== index),
+    }));
+    setReviewFlags((current) => shiftFlagsAfterRemoval(current, index));
   }
 
   return (
@@ -366,15 +384,28 @@ export default function App() {
                     <button
                       type="button"
                       className="secondary"
-                      onClick={() =>
-                        updateDraft((current) => ({
-                          ...current,
-                          sections: current.sections.filter((_, currentIndex) => currentIndex !== index),
-                        }))
-                      }
+                      onClick={() => removeSection(index)}
                     >
                       Remove
                     </button>
+                  </div>
+                  <div className="stack">
+                    <select
+                      value={reviewFlags[index]?.status || "ready"}
+                      onChange={(event) => updateReviewFlag(index, { status: event.target.value })}
+                    >
+                      {reviewStatuses.map((status) => (
+                        <option key={status} value={status}>
+                          {titleCase(status)}
+                        </option>
+                      ))}
+                    </select>
+                    <textarea
+                      value={reviewFlags[index]?.note || ""}
+                      onChange={(event) => updateReviewFlag(index, { note: event.target.value })}
+                      rows={2}
+                      placeholder="Optional review note"
+                    />
                   </div>
                   <input
                     value={section.heading}
@@ -441,6 +472,10 @@ export default function App() {
               <div className="panel">
                 <h3>Draft Diff</h3>
                 {renderDraftDiff(originalDraft, draft)}
+              </div>
+              <div className="panel">
+                <h3>Review Flags</h3>
+                {renderReviewFlags(draft.sections, reviewFlags)}
               </div>
               <form className="stack exportForm" onSubmit={handleExport}>
                 <h3>Export Reviewed Draft</h3>
@@ -810,4 +845,41 @@ function joinCitations(citations = []) {
 function clipForDiff(input) {
   const value = String(input || "").trim();
   return value.length > 120 ? `${value.slice(0, 117)}...` : value || "(empty)";
+}
+
+function renderReviewFlags(sections, reviewFlags) {
+  const flaggedSections = sections
+    .map((section, index) => ({ index, section, flag: reviewFlags[index] || { status: "ready", note: "" } }))
+    .filter(({ flag }) => flag.status !== "ready" || flag.note.trim());
+
+  if (flaggedSections.length === 0) {
+    return <p className="empty">No follow-up flags. All sections are currently marked ready.</p>;
+  }
+
+  return (
+    <div className="stack">
+      {flaggedSections.map(({ index, section, flag }) => (
+        <article key={`flag-${index}`} className="resultCard">
+          <strong>
+            Section {index + 1}: {section.heading}
+          </strong>
+          <p>Status: {titleCase(flag.status)}</p>
+          {flag.note.trim() && <p>Note: {flag.note.trim()}</p>}
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function shiftFlagsAfterRemoval(flags, removedIndex) {
+  const shifted = {};
+  Object.entries(flags).forEach(([key, value]) => {
+    const index = Number(key);
+    if (index < removedIndex) {
+      shifted[index] = value;
+    } else if (index > removedIndex) {
+      shifted[index - 1] = value;
+    }
+  });
+  return shifted;
 }
