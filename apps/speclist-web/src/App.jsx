@@ -40,6 +40,7 @@ export default function App() {
   const [originalDraft, setOriginalDraft] = useState(null);
   const [reviewFlags, setReviewFlags] = useState({});
   const [collapsedSections, setCollapsedSections] = useState({});
+  const [activeSectionIndex, setActiveSectionIndex] = useState(0);
   const [citationInspection, setCitationInspection] = useState(null);
   const [sourceDetail, setSourceDetail] = useState(null);
   const [exportResult, setExportResult] = useState(null);
@@ -151,6 +152,7 @@ export default function App() {
       setOriginalDraft(structuredClone(payload));
       setReviewFlags({});
       setCollapsedSections({});
+      setActiveSectionIndex(0);
       setExportResult(null);
       setExportConfig((current) => ({
         ...current,
@@ -289,6 +291,7 @@ export default function App() {
   }
 
   function focusSection(index) {
+    setActiveSectionIndex(index);
     setCollapsedSections((current) => {
       if (!current[index]) {
         return current;
@@ -307,6 +310,7 @@ export default function App() {
     setDraft(structuredClone(originalDraft));
     setReviewFlags({});
     setCollapsedSections({});
+    setActiveSectionIndex(0);
     setExportResult(null);
     setMessage("Reset review state to the original generated draft.");
     setError("");
@@ -464,9 +468,11 @@ export default function App() {
                       className="secondary"
                       onClick={() => focusSection(index)}
                     >
-                      {`Section ${index + 1}: ${section.heading || "Untitled section"} | ${titleCase(
-                        reviewFlags[index]?.status || "ready",
-                      )}${collapsedSections[index] ? " | Collapsed" : ""}`}
+                      {`${activeSectionIndex === index ? "* " : ""}Section ${index + 1}: ${
+                        section.heading || "Untitled section"
+                      } | ${titleCase(reviewFlags[index]?.status || "ready")}${
+                        collapsedSections[index] ? " | Collapsed" : ""
+                      }`}
                     </button>
                   ))}
                 </div>
@@ -481,7 +487,7 @@ export default function App() {
                 >
                   {collapsedSections[index] && <p className="empty">Collapsed section</p>}
                   <div className="resultMeta">
-                    <strong>Section {index + 1}</strong>
+                    <strong>{activeSectionIndex === index ? `Section ${index + 1} (Active)` : `Section ${index + 1}`}</strong>
                     <div className="sourceList">
                       <button
                         type="button"
