@@ -202,7 +202,7 @@ func (s *Service) ExportDraft(_ context.Context, request domain.DraftExportReque
 		if err != nil {
 			return domain.DraftExportResult{}, err
 		}
-		primaryContents = renderOpenSpecMarkdown(request.Draft)
+		primaryContents = renderOpenSpecArtifact(request.Draft, *request.OpenSpecTarget)
 	} else {
 		if strings.TrimSpace(request.TargetDir) == "" {
 			return domain.DraftExportResult{}, fmt.Errorf("target_dir is required")
@@ -420,6 +420,113 @@ func renderOpenSpecMarkdown(draft domain.DraftSpec) string {
 	return strings.TrimSpace(builder.String()) + "\n"
 }
 
+func renderOpenSpecArtifact(draft domain.DraftSpec, target domain.OpenSpecExportTarget) string {
+	switch target.Artifact {
+	case "proposal":
+		return renderProposalTemplate(draft)
+	case "design":
+		return renderDesignTemplate(draft)
+	case "tasks":
+		return renderTasksTemplate(draft)
+	case "spec":
+		return renderSpecTemplate(draft, target.CapabilityName)
+	default:
+		return renderOpenSpecMarkdown(draft)
+	}
+}
+
+func renderProposalTemplate(draft domain.DraftSpec) string {
+	return strings.TrimSpace(fmt.Sprintf(`## Why
+
+%s
+
+## What Changes
+
+%s
+
+## Capabilities
+
+### New Capabilities
+- %s
+
+### Modified Capabilities
+- none yet
+
+## Impact
+
+%s
+`,
+		findSectionBody(draft, "Why", draft.Summary),
+		findSectionBody(draft, "Proposed Requirements", draft.Summary),
+		strings.ToLower(strings.ReplaceAll(draft.Title, " ", "-")),
+		findSectionBody(draft, "Context", draft.Summary),
+	)) + "\n"
+}
+
+func renderDesignTemplate(draft domain.DraftSpec) string {
+	return strings.TrimSpace(fmt.Sprintf(`## Context
+
+%s
+
+## Goals / Non-Goals
+
+**Goals:**
+%s
+
+**Non-Goals:**
+- refine after review
+
+## Decisions
+
+%s
+
+## Risks / Trade-offs
+
+- review exported draft assumptions against cited sources
+`,
+		findSectionBody(draft, "Context", draft.Summary),
+		findSectionBody(draft, "Why", draft.Summary),
+		findSectionBody(draft, "Proposed Requirements", draft.Summary),
+	)) + "\n"
+}
+
+func renderTasksTemplate(draft domain.DraftSpec) string {
+	lines := bulletize(findSectionBody(draft, "Proposed Requirements", draft.Summary))
+	if len(lines) == 0 {
+		lines = []string{"refine exported draft into implementation tasks"}
+	}
+
+	var builder strings.Builder
+	builder.WriteString("## 1. Exported Tasks\n\n")
+	for index, line := range lines {
+		builder.WriteString(fmt.Sprintf("- [ ] 1.%d %s\n", index+1, sanitizeTaskLine(line)))
+	}
+	return builder.String()
+}
+
+func renderSpecTemplate(draft domain.DraftSpec, capabilityName string) string {
+	requirementName := capabilityName
+	if strings.TrimSpace(requirementName) == "" {
+		requirementName = sanitizeFilename(draft.Title)
+	}
+	return strings.TrimSpace(fmt.Sprintf(`## ADDED Requirements
+
+### Requirement: %s
+%s
+
+#### Scenario: Drafted Scenario
+- **WHEN** a contributor applies the exported draft
+- **THEN** the resulting spec starts from the grounded requirement content below
+- **AND** the artifact remains ready for further refinement
+
+%s
+`,
+		titleizeRequirement(requirementName),
+		findSectionBody(draft, "Why", draft.Summary),
+		indentLines(findSectionBody(draft, "Proposed Requirements", draft.Summary)),
+	)) + "\n"
+}
+
 func renderFastSpecYAML(draft domain.DraftSpec, targetName string) string {
 	var builder strings.Builder
 	builder.WriteString("apiVersion: speclist.fastspec.dev/v0alpha1\n")
@@ -504,6 +611,53 @@ func sanitizeFilename(input string) string {
 func yamlQuote(input string) string {
 	input = strings.ReplaceAll(input, "\"", "\\\"")
 	return "\"" + input + "\""
+}
+
+func findSectionBody(draft domain.DraftSpec, heading string, fallback string) string {
+	for _, section := range draft.Sections {
+		if strings.EqualFold(section.Heading, heading) {
+			return section.Body
+		}
+	}
+	return fallback
+}
+
+func bulletize(input string) []string {
+	lines := make([]string, 0)
+	for _, line := range strings.Split(input, "\n") {
+		line = strings.TrimSpace(strings.TrimPrefix(line, "-"))
+		if line != "" {
+			lines = append(lines, line)
+		}
+	}
+	return lines
+}
+
+func sanitizeTaskLine(input string) string {
+	input = strings.TrimSpace(strings.TrimPrefix(input, "MUST "))
+	input = strings.TrimSpace(strings.TrimPrefix(input, "reflect:"))
+	input = strings.TrimSpace(strings.TrimPrefix(input, "MUST reflect:"))
+	if input == "" {
+		return "refine exported draft task"
+	}
+	return strings.ToLower(input[:1]) + input[1:]
+}
+
+func titleizeRequirement(input string) string {
+	input = strings.ReplaceAll(input, "-", " ")
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return "Exported Draft Requirement"
+	}
+	return strings.ToUpper(input[:1]) + input[1:]
+}
+
+func indentLines(input string) string {
+	lines := strings.Split(strings.TrimSpace(input), "\n")
+	for index, line := range lines {
+		lines[index] = line
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (s *Service) resolveOpenSpecTarget(target domain.OpenSpecExportTarget) (string, string, error) {

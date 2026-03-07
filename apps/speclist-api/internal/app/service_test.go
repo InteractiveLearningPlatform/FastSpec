@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -198,8 +199,12 @@ func TestExportDraftWritesToOpenSpecChangeTarget(t *testing.T) {
 	if len(result.Artifacts) != 2 {
 		t.Fatalf("expected 2 artifacts, got %d", len(result.Artifacts))
 	}
-	if _, err := os.Stat(filepath.Join(changeDir, "proposal.md")); err != nil {
+	contents, err := os.ReadFile(filepath.Join(changeDir, "proposal.md"))
+	if err != nil {
 		t.Fatalf("expected proposal export: %v", err)
+	}
+	if !strings.Contains(string(contents), "## Why") || !strings.Contains(string(contents), "## What Changes") {
+		t.Fatalf("expected proposal template, got: %s", string(contents))
 	}
 }
 
@@ -227,5 +232,85 @@ func TestListOpenSpecChangesReturnsActiveChanges(t *testing.T) {
 	}
 	if len(changes) != 1 || changes[0].Name != "demo-change" {
 		t.Fatalf("unexpected changes: %+v", changes)
+	}
+}
+
+func TestExportDraftRendersTasksTemplate(t *testing.T) {
+	repoRoot := t.TempDir()
+	changeDir := filepath.Join(repoRoot, "openspec", "changes", "demo-change")
+	if err := os.MkdirAll(changeDir, 0o755); err != nil {
+		t.Fatalf("mkdir change dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(changeDir, ".openspec.yaml"), []byte("schema: spec-driven\n"), 0o644); err != nil {
+		t.Fatalf("write change marker: %v", err)
+	}
+
+	service := NewService(&memoryStore{}, stubDOCXImporter{}, stubConfluenceImporter{}, stubIndexer{}, repoRoot)
+	_, err := service.ExportDraft(context.Background(), domain.DraftExportRequest{
+		Draft: domain.DraftSpec{
+			Title:       "Task Draft",
+			Query:       "task rendering",
+			Summary:     "Task summary",
+			SourceCount: 1,
+			Sections: []domain.DraftSection{
+				{Heading: "Proposed Requirements", Body: "- MUST reflect: Add indexing\n- MUST reflect: Add review flow"},
+			},
+		},
+		Format: domain.ExportFormatOpenSpecMarkdown,
+		OpenSpecTarget: &domain.OpenSpecExportTarget{
+			ChangeName: "demo-change",
+			Artifact:   "tasks",
+		},
+	})
+	if err != nil {
+		t.Fatalf("export tasks failed: %v", err)
+	}
+	contents, err := os.ReadFile(filepath.Join(changeDir, "tasks.md"))
+	if err != nil {
+		t.Fatalf("read tasks export: %v", err)
+	}
+	if !strings.Contains(string(contents), "- [ ] 1.1") {
+		t.Fatalf("expected checklist template, got: %s", string(contents))
+	}
+}
+
+func TestExportDraftRendersSpecTemplate(t *testing.T) {
+	repoRoot := t.TempDir()
+	changeDir := filepath.Join(repoRoot, "openspec", "changes", "demo-change")
+	if err := os.MkdirAll(changeDir, 0o755); err != nil {
+		t.Fatalf("mkdir change dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(changeDir, ".openspec.yaml"), []byte("schema: spec-driven\n"), 0o644); err != nil {
+		t.Fatalf("write change marker: %v", err)
+	}
+
+	service := NewService(&memoryStore{}, stubDOCXImporter{}, stubConfluenceImporter{}, stubIndexer{}, repoRoot)
+	_, err := service.ExportDraft(context.Background(), domain.DraftExportRequest{
+		Draft: domain.DraftSpec{
+			Title:       "Spec Draft",
+			Query:       "spec rendering",
+			Summary:     "Spec summary",
+			SourceCount: 1,
+			Sections: []domain.DraftSection{
+				{Heading: "Why", Body: "Need requirement-oriented export."},
+				{Heading: "Proposed Requirements", Body: "- MUST reflect: Keep structured scenarios"},
+			},
+		},
+		Format: domain.ExportFormatOpenSpecMarkdown,
+		OpenSpecTarget: &domain.OpenSpecExportTarget{
+			ChangeName:     "demo-change",
+			Artifact:       "spec",
+			CapabilityName: "typed-rendering",
+		},
+	})
+	if err != nil {
+		t.Fatalf("export spec failed: %v", err)
+	}
+	contents, err := os.ReadFile(filepath.Join(changeDir, "specs", "typed-rendering", "spec.md"))
+	if err != nil {
+		t.Fatalf("read spec export: %v", err)
+	}
+	if !strings.Contains(string(contents), "### Requirement: Typed rendering") {
+		t.Fatalf("expected spec template, got: %s", string(contents))
 	}
 }
