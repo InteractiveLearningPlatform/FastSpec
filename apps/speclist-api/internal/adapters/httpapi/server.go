@@ -29,6 +29,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/import/confluence", s.handleImportConfluence)
 	mux.HandleFunc("/api/v1/index/specs", s.handleIndexSpecs)
 	mux.HandleFunc("/api/v1/openspec/changes", s.handleListOpenSpecChanges)
+	mux.HandleFunc("/api/v1/sources/inspect", s.handleInspectSource)
 	mux.HandleFunc("/api/v1/search", s.handleSearch)
 	mux.HandleFunc("/api/v1/citations/inspect", s.handleInspectCitation)
 	mux.HandleFunc("/api/v1/drafts", s.handleDraft)
@@ -170,6 +171,26 @@ func (s *Server) handleSearch(writer http.ResponseWriter, request *http.Request)
 		return
 	}
 	writeJSON(writer, http.StatusOK, bundle)
+}
+
+func (s *Server) handleInspectSource(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPost {
+		writeMethodNotAllowed(writer)
+		return
+	}
+	var payload struct {
+		SourceID string `json:"source_id"`
+	}
+	if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+		writeError(writer, http.StatusBadRequest, err)
+		return
+	}
+	source, err := s.service.InspectSource(request.Context(), payload.SourceID)
+	if err != nil {
+		writeError(writer, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(writer, http.StatusOK, map[string]any{"source": source})
 }
 
 func (s *Server) handleInspectCitation(writer http.ResponseWriter, request *http.Request) {
