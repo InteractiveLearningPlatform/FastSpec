@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -16,7 +16,7 @@ fn unique_temp_dir(name: &str) -> PathBuf {
     std::env::temp_dir().join(format!("fastspec-{unique}-{name}"))
 }
 
-fn write_invalid_fixture_tree(root: &PathBuf) {
+fn write_invalid_fixture_tree(root: &Path) {
     fs::create_dir_all(root.join("modules")).expect("fixture directories should be created");
     fs::write(
         root.join("project.fastspec.yaml"),
