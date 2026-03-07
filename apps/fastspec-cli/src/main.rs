@@ -3,8 +3,8 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use fastspec_core::{
-    GraphOutput, InspectOutput, PlanOutput, SummaryOutput, ValidationOutput, export_graph, export_plan, parse_spec_path, validate_findings,
-    validate_spec_tree,
+    GraphOutput, InspectOutput, PlanOutput, ScaffoldOutput, SummaryOutput, ValidationOutput, export_graph, export_plan, generate_scaffold,
+    parse_spec_path, validate_findings, validate_spec_tree,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -14,14 +14,18 @@ enum CommandKind {
     Validate,
     Graph,
     Plan,
+    Generate,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct CliCommand {
     kind: CommandKind,
     path: String,
+    output_dir: Option<String>,
     json: bool,
 }
+
+const USAGE: &str = "usage: fastspec <summary|inspect|validate|graph|plan|generate> [--json] [--out <dir>] <path>";
 
 fn main() -> ExitCode {
     match parse_args(env::args().skip(1)) {
@@ -41,26 +45,47 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<CliCommand, Stri
         Some("validate") => CommandKind::Validate,
         Some("graph") => CommandKind::Graph,
         Some("plan") => CommandKind::Plan,
-        _ => return Err("usage: fastspec <summary|inspect|validate|graph|plan> [--json] <path>".to_string()),
+        Some("generate") => CommandKind::Generate,
+        _ => return Err(USAGE.to_string()),
     };
 
     let mut json = false;
     let mut path = None;
-    for arg in args {
+    let mut output_dir = None;
+    let mut args = args.peekable();
+    while let Some(arg) = args.next() {
         if arg == "--json" {
             json = true;
+        } else if arg == "--out" {
+            let Some(dir) = args.next() else {
+                return Err(USAGE.to_string());
+            };
+            output_dir = Some(dir);
+        } else if let Some(dir) = arg.strip_prefix("--out=") {
+            if dir.is_empty() {
+                return Err(USAGE.to_string());
+            }
+            output_dir = Some(dir.to_string());
         } else if path.is_none() {
             path = Some(arg);
         } else {
-            return Err("usage: fastspec <summary|inspect|validate|graph|plan> [--json] <path>".to_string());
+            return Err(USAGE.to_string());
         }
     }
 
     let Some(path) = path else {
-        return Err("usage: fastspec <summary|inspect|validate|graph|plan> [--json] <path>".to_string());
+        return Err(USAGE.to_string());
     };
 
-    Ok(CliCommand { kind, path, json })
+    if kind == CommandKind::Generate && output_dir.is_none() {
+        return Err(USAGE.to_string());
+    }
+
+    if kind != CommandKind::Generate && output_dir.is_some() {
+        return Err(USAGE.to_string());
+    }
+
+    Ok(CliCommand { kind, path, output_dir, json })
 }
 
 fn run_command(command: CliCommand) -> ExitCode {
@@ -70,6 +95,9 @@ fn run_command(command: CliCommand) -> ExitCode {
         CommandKind::Validate => validate_path(Path::new(&command.path), command.json),
         CommandKind::Graph => graph_path(Path::new(&command.path), command.json),
         CommandKind::Plan => plan_path(Path::new(&command.path), command.json),
+        CommandKind::Generate => {
+            generate_path(Path::new(&command.path), Path::new(command.output_dir.as_deref().unwrap_or_default()), command.json)
+        }
     }
 }
 
@@ -160,6 +188,20 @@ fn plan_path(path: &Path, json: bool) -> ExitCode {
     }
 }
 
+fn generate_path(path: &Path, output_dir: &Path, json: bool) -> ExitCode {
+    match generate_scaffold(path, output_dir) {
+        Ok(output) => {
+            if json {
+                return print_json(&output);
+            }
+
+            print_generation_text(&output);
+            ExitCode::SUCCESS
+        }
+        Err(error) => print_error(&error.to_string(), json),
+    }
+}
+
 fn print_json<T: serde::Serialize>(value: &T) -> ExitCode {
     print_json_with_status(value, ExitCode::SUCCESS)
 }
@@ -224,6 +266,13 @@ fn print_plan_text(output: &PlanOutput) {
     }
 }
 
+fn print_generation_text(output: &ScaffoldOutput) {
+    println!("output_dir:\t{}", output.output_dir.display());
+    for artifact in &output.artifacts {
+        println!("{:?}\t{}\t{}", artifact.kind, artifact.path.display(), artifact.description);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{CliCommand, CommandKind, parse_args};
@@ -231,13 +280,13 @@ mod tests {
     #[test]
     fn parses_json_flag_before_path() {
         let command = parse_args(["summary".to_string(), "--json".to_string(), "specs".to_string()]).expect("args should parse");
-        assert_eq!(command, CliCommand { kind: CommandKind::Summary, path: "specs".to_string(), json: true });
+        assert_eq!(command, CliCommand { kind: CommandKind::Summary, path: "specs".to_string(), output_dir: None, json: true });
     }
 
     #[test]
     fn parses_json_flag_after_path() {
         let command = parse_args(["inspect".to_string(), "specs".to_string(), "--json".to_string()]).expect("args should parse");
-        assert_eq!(command, CliCommand { kind: CommandKind::Inspect, path: "specs".to_string(), json: true });
+        assert_eq!(command, CliCommand { kind: CommandKind::Inspect, path: "specs".to_string(), output_dir: None, json: true });
     }
 
     #[test]
@@ -249,18 +298,42 @@ mod tests {
     #[test]
     fn parses_validate_command() {
         let command = parse_args(["validate".to_string(), "--json".to_string(), "specs".to_string()]).expect("args should parse");
-        assert_eq!(command, CliCommand { kind: CommandKind::Validate, path: "specs".to_string(), json: true });
+        assert_eq!(command, CliCommand { kind: CommandKind::Validate, path: "specs".to_string(), output_dir: None, json: true });
     }
 
     #[test]
     fn parses_graph_command() {
         let command = parse_args(["graph".to_string(), "--json".to_string(), "specs".to_string()]).expect("args should parse");
-        assert_eq!(command, CliCommand { kind: CommandKind::Graph, path: "specs".to_string(), json: true });
+        assert_eq!(command, CliCommand { kind: CommandKind::Graph, path: "specs".to_string(), output_dir: None, json: true });
     }
 
     #[test]
     fn parses_plan_command() {
         let command = parse_args(["plan".to_string(), "--json".to_string(), "specs".to_string()]).expect("args should parse");
-        assert_eq!(command, CliCommand { kind: CommandKind::Plan, path: "specs".to_string(), json: true });
+        assert_eq!(command, CliCommand { kind: CommandKind::Plan, path: "specs".to_string(), output_dir: None, json: true });
+    }
+
+    #[test]
+    fn parses_generate_command_with_out_dir() {
+        let command =
+            parse_args(["generate".to_string(), "--json".to_string(), "--out".to_string(), "out".to_string(), "specs".to_string()])
+                .expect("args should parse");
+        assert_eq!(
+            command,
+            CliCommand { kind: CommandKind::Generate, path: "specs".to_string(), output_dir: Some("out".to_string()), json: true }
+        );
+    }
+
+    #[test]
+    fn rejects_generate_without_out_dir() {
+        let error = parse_args(["generate".to_string(), "specs".to_string()]).expect_err("generate should require out dir");
+        assert!(error.contains("usage: fastspec"));
+    }
+
+    #[test]
+    fn rejects_out_dir_for_non_generate_command() {
+        let error = parse_args(["plan".to_string(), "--out".to_string(), "out".to_string(), "specs".to_string()])
+            .expect_err("out dir should not be accepted");
+        assert!(error.contains("usage: fastspec"));
     }
 }
