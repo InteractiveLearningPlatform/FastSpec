@@ -293,6 +293,66 @@ func TestExportDraftRejectsOverwrite(t *testing.T) {
 	}
 }
 
+func TestExportDraftRejectsBlankSectionHeading(t *testing.T) {
+	service := NewService(&memoryStore{}, stubDOCXImporter{}, stubConfluenceImporter{}, stubIndexer{}, "")
+
+	_, err := service.ExportDraft(context.Background(), domain.DraftExportRequest{
+		Draft: domain.DraftSpec{
+			Title:       "Edited Draft",
+			Query:       "reviewed editing",
+			Summary:     "Draft summary",
+			SourceCount: 1,
+			Sections: []domain.DraftSection{
+				{Heading: "   ", Body: "Need a durable artifact.", Citations: []string{"notes.docx > Why"}},
+			},
+		},
+		Format:     domain.ExportFormatOpenSpecMarkdown,
+		TargetDir:  t.TempDir(),
+		TargetName: "edited-draft",
+	})
+	if err == nil || !strings.Contains(err.Error(), "section heading") {
+		t.Fatalf("expected section heading validation error, got %v", err)
+	}
+}
+
+func TestExportDraftNormalizesEditedContent(t *testing.T) {
+	service := NewService(&memoryStore{}, stubDOCXImporter{}, stubConfluenceImporter{}, stubIndexer{}, "")
+	targetDir := t.TempDir()
+
+	_, err := service.ExportDraft(context.Background(), domain.DraftExportRequest{
+		Draft: domain.DraftSpec{
+			Title:       "  Edited Draft  ",
+			Query:       "  reviewed editing  ",
+			Summary:     "  Draft summary  ",
+			SourceCount: 1,
+			Sections: []domain.DraftSection{
+				{Heading: "  Why  ", Body: "  Need a durable artifact.  ", Citations: []string{"  notes.docx > Why  ", "   "}},
+			},
+		},
+		Format:     domain.ExportFormatOpenSpecMarkdown,
+		TargetDir:  targetDir,
+		TargetName: "edited-draft",
+	})
+	if err != nil {
+		t.Fatalf("export failed: %v", err)
+	}
+
+	contents, err := os.ReadFile(filepath.Join(targetDir, "edited-draft.md"))
+	if err != nil {
+		t.Fatalf("read edited markdown: %v", err)
+	}
+	text := string(contents)
+	if strings.Contains(text, "  Edited Draft  ") {
+		t.Fatalf("expected normalized title, got: %s", text)
+	}
+	if !strings.Contains(text, "# Edited Draft") {
+		t.Fatalf("expected trimmed title, got: %s", text)
+	}
+	if !strings.Contains(text, "- notes.docx > Why") {
+		t.Fatalf("expected trimmed citation, got: %s", text)
+	}
+}
+
 func TestExportDraftWritesToOpenSpecChangeTarget(t *testing.T) {
 	repoRoot := t.TempDir()
 	changeDir := filepath.Join(repoRoot, "openspec", "changes", "demo-change")

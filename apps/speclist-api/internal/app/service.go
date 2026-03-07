@@ -182,10 +182,15 @@ func (s *Service) DraftSpec(ctx context.Context, query string, title string, for
 }
 
 func (s *Service) ExportDraft(_ context.Context, request domain.DraftExportRequest) (domain.DraftExportResult, error) {
-	if strings.TrimSpace(request.Draft.Title) == "" {
+	draft, err := normalizeDraft(request.Draft)
+	if err != nil {
+		return domain.DraftExportResult{}, err
+	}
+
+	if strings.TrimSpace(draft.Title) == "" {
 		return domain.DraftExportResult{}, fmt.Errorf("draft title is required")
 	}
-	if len(request.Draft.Sections) == 0 {
+	if len(draft.Sections) == 0 {
 		return domain.DraftExportResult{}, fmt.Errorf("draft must contain at least one section")
 	}
 
@@ -201,12 +206,11 @@ func (s *Service) ExportDraft(_ context.Context, request domain.DraftExportReque
 		if format != domain.ExportFormatOpenSpecMarkdown {
 			return domain.DraftExportResult{}, fmt.Errorf("openspec change targets require openspec-markdown format")
 		}
-		var err error
 		primaryPath, sidecarPath, err = s.resolveOpenSpecTarget(*request.OpenSpecTarget)
 		if err != nil {
 			return domain.DraftExportResult{}, err
 		}
-		primaryContents = renderOpenSpecArtifact(request.Draft, *request.OpenSpecTarget)
+		primaryContents = renderOpenSpecArtifact(draft, *request.OpenSpecTarget)
 	} else {
 		if strings.TrimSpace(request.TargetDir) == "" {
 			return domain.DraftExportResult{}, fmt.Errorf("target_dir is required")
@@ -224,11 +228,11 @@ func (s *Service) ExportDraft(_ context.Context, request domain.DraftExportReque
 		case domain.ExportFormatOpenSpecMarkdown:
 			primaryPath = filepath.Join(targetDir, targetName+".md")
 			sidecarPath = filepath.Join(targetDir, targetName+".sources.json")
-			primaryContents = renderOpenSpecMarkdown(request.Draft)
+			primaryContents = renderOpenSpecMarkdown(draft)
 		case domain.ExportFormatFastSpecYAML:
 			primaryPath = filepath.Join(targetDir, targetName+".fastspec.yaml")
 			sidecarPath = filepath.Join(targetDir, targetName+".sources.json")
-			primaryContents = renderFastSpecYAML(request.Draft, targetName)
+			primaryContents = renderFastSpecYAML(draft, targetName)
 		default:
 			return domain.DraftExportResult{}, fmt.Errorf("unsupported export format %q", format)
 		}
@@ -241,7 +245,7 @@ func (s *Service) ExportDraft(_ context.Context, request domain.DraftExportReque
 		return domain.DraftExportResult{}, err
 	}
 
-	sidecarContents, err := json.MarshalIndent(renderCitationSidecar(request.Draft, primaryPath), "", "  ")
+	sidecarContents, err := json.MarshalIndent(renderCitationSidecar(draft, primaryPath), "", "  ")
 	if err != nil {
 		return domain.DraftExportResult{}, err
 	}
@@ -259,6 +263,39 @@ func (s *Service) ExportDraft(_ context.Context, request domain.DraftExportReque
 			{Path: sidecarPath, Description: "citation sidecar"},
 		},
 	}, nil
+}
+
+func normalizeDraft(draft domain.DraftSpec) (domain.DraftSpec, error) {
+	draft.Title = strings.TrimSpace(draft.Title)
+	draft.Query = strings.TrimSpace(draft.Query)
+	draft.Summary = strings.TrimSpace(draft.Summary)
+	if draft.Title == "" {
+		return domain.DraftSpec{}, fmt.Errorf("draft title is required")
+	}
+
+	sections := make([]domain.DraftSection, 0, len(draft.Sections))
+	for _, section := range draft.Sections {
+		normalized := domain.DraftSection{
+			Heading: strings.TrimSpace(section.Heading),
+			Body:    strings.TrimSpace(section.Body),
+		}
+		if normalized.Heading == "" {
+			return domain.DraftSpec{}, fmt.Errorf("draft section heading is required")
+		}
+		if normalized.Body == "" {
+			return domain.DraftSpec{}, fmt.Errorf("draft section body is required")
+		}
+		for _, citation := range section.Citations {
+			citation = strings.TrimSpace(citation)
+			if citation == "" {
+				continue
+			}
+			normalized.Citations = append(normalized.Citations, citation)
+		}
+		sections = append(sections, normalized)
+	}
+	draft.Sections = sections
+	return draft, nil
 }
 
 func (s *Service) ListOpenSpecChanges(_ context.Context) ([]domain.OpenSpecChange, error) {

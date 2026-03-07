@@ -24,9 +24,10 @@ It exists to bridge the gap between:
 2. Index existing FastSpec and OpenSpec repository artifacts.
 3. Search for grounded context bundles instead of raw documents.
 4. Generate reviewable draft specs with source citations.
-5. Export accepted drafts into durable OpenSpec markdown or FastSpec YAML files.
-6. Optionally target an active OpenSpec change artifact directly instead of a generic output path.
-7. Narrow retrieval and drafting with source-kind, source-origin, and location filters when the corpus mixes imported docs and repository specs.
+5. Review and edit draft titles, summaries, sections, and citations in the workbench.
+6. Export accepted drafts into durable OpenSpec markdown or FastSpec YAML files.
+7. Optionally target an active OpenSpec change artifact directly instead of a generic output path.
+8. Narrow retrieval and drafting with source-kind, source-origin, and location filters when the corpus mixes imported docs and repository specs.
 
 ## Design Constraints
 
@@ -37,6 +38,7 @@ It exists to bridge the gap between:
 - Require explicit export destinations and avoid silent overwrite of existing files.
 - Keep the workbench as one platform surface, not the full product boundary.
 - Keep retrieval filters simple and source-oriented so they stay compatible with later platform-scale search work.
+- Let reviewers refine generated drafts before export, while keeping export validation on the backend.
 
 ## Local Development
 
@@ -74,6 +76,7 @@ OpenSpec-aware export currently supports writing into active change targets for:
 When exporting into those OpenSpec targets, Speclist now renders typed artifact templates instead of a single generic markdown draft shape.
 
 The backend requires an explicit target directory and target name for every export.
+Edited drafts are normalized during export, and export rejects blank titles or empty section headings/bodies.
 
 ## Retrieval Filters
 
@@ -87,3 +90,14 @@ Speclist search and draft generation now support the same compact retrieval filt
   keep only sources whose location contains the provided substring
 
 The workbench keeps these filters visible and applies them to both retrieval and drafting so the generated draft stays grounded in the intended subset of sources.
+
+## Draft Editing
+
+After generation, the workbench keeps the draft in editable state:
+
+- title and summary can be rewritten before export
+- section headings and section bodies can be edited directly
+- citations can be adjusted as one entry per line
+- reviewers can add or remove sections before export
+
+This editing flow remains in-memory only. The backend validates the edited draft during export so invalid reviewer edits do not produce partial artifacts.

@@ -180,6 +180,10 @@ export default function App() {
     }
   }
 
+  function updateDraft(updater) {
+    setDraft((current) => (current ? updater(current) : current));
+  }
+
   return (
     <div className="page">
       <header className="hero">
@@ -298,18 +302,84 @@ export default function App() {
           </form>
           {draft ? (
             <div className="draft">
-              <p className="draftSummary">{draft.summary}</p>
-              {draft.sections.map((section) => (
-                <section key={section.heading} className="draftSection">
-                  <h3>{section.heading}</h3>
-                  <pre>{section.body}</pre>
-                  <ul>
-                    {section.citations.map((citation) => (
-                      <li key={citation}>{citation}</li>
-                    ))}
-                  </ul>
+              <div className="stack">
+                <input
+                  value={draft.title}
+                  onChange={(event) => updateDraft((current) => ({ ...current, title: event.target.value }))}
+                  placeholder="Draft title"
+                />
+                <textarea
+                  value={draft.summary}
+                  onChange={(event) => updateDraft((current) => ({ ...current, summary: event.target.value }))}
+                  rows={3}
+                  placeholder="Draft summary"
+                />
+              </div>
+              {draft.sections.map((section, index) => (
+                <section key={`${section.heading}-${index}`} className="draftSection">
+                  <div className="resultMeta">
+                    <strong>Section {index + 1}</strong>
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() =>
+                        updateDraft((current) => ({
+                          ...current,
+                          sections: current.sections.filter((_, currentIndex) => currentIndex !== index),
+                        }))
+                      }
+                    >
+                      Remove
+                    </button>
+                  </div>
+                  <input
+                    value={section.heading}
+                    onChange={(event) =>
+                      updateDraft((current) => ({
+                        ...current,
+                        sections: updateSection(current.sections, index, { heading: event.target.value }),
+                      }))
+                    }
+                    placeholder="Section heading"
+                  />
+                  <textarea
+                    value={section.body}
+                    onChange={(event) =>
+                      updateDraft((current) => ({
+                        ...current,
+                        sections: updateSection(current.sections, index, { body: event.target.value }),
+                      }))
+                    }
+                    rows={6}
+                    placeholder="Section body"
+                  />
+                  <textarea
+                    value={section.citations.join("\n")}
+                    onChange={(event) =>
+                      updateDraft((current) => ({
+                        ...current,
+                        sections: updateSection(current.sections, index, {
+                          citations: splitCitations(event.target.value),
+                        }),
+                      }))
+                    }
+                    rows={3}
+                    placeholder="One citation per line"
+                  />
                 </section>
               ))}
+              <button
+                type="button"
+                className="secondary"
+                onClick={() =>
+                  updateDraft((current) => ({
+                    ...current,
+                    sections: [...current.sections, { heading: "New Section", body: "", citations: [] }],
+                  }))
+                }
+              >
+                Add section
+              </button>
               <form className="stack exportForm" onSubmit={handleExport}>
                 <h3>Export Reviewed Draft</h3>
                 <select
@@ -465,4 +535,15 @@ function describeFilters(filters) {
     parts.push(`location~${filters.location_contains.trim()}`);
   }
   return parts.length > 0 ? parts.join(" | ") : "none";
+}
+
+function updateSection(sections, index, patch) {
+  return sections.map((section, sectionIndex) => (sectionIndex === index ? { ...section, ...patch } : section));
+}
+
+function splitCitations(value) {
+  return value
+    .split("\n")
+    .map((citation) => citation.trim())
+    .filter(Boolean);
 }
