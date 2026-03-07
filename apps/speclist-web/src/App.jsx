@@ -35,6 +35,7 @@ export default function App() {
   const [draftTitle, setDraftTitle] = useState("Speclist Draft");
   const [draft, setDraft] = useState(null);
   const [citationInspection, setCitationInspection] = useState(null);
+  const [sourceDetail, setSourceDetail] = useState(null);
   const [exportResult, setExportResult] = useState(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -178,6 +179,19 @@ export default function App() {
       const payload = await assertOk(response);
       setCitationInspection(payload);
       setMessage(`Loaded citation ${citation}`);
+    });
+  }
+
+  async function inspectSource(sourceID) {
+    await runAction(async () => {
+      const response = await fetch(`${apiBase}/api/v1/sources/inspect`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source_id: sourceID }),
+      });
+      const payload = await assertOk(response);
+      setSourceDetail(payload.source);
+      setMessage(`Loaded source ${payload.source.title}`);
     });
   }
 
@@ -502,7 +516,12 @@ export default function App() {
                   <strong>{source.title}</strong>
                   <p>{source.location}</p>
                 </div>
-                <span className="pill">{source.kind}</span>
+                <div className="stack">
+                  <span className="pill">{source.kind}</span>
+                  <button type="button" className="secondary" onClick={() => inspectSource(source.id)}>
+                    Inspect source
+                  </button>
+                </div>
               </article>
             ))}
             {sources.length === 0 && <p className="empty">Import a document or index repository specs to populate the corpus.</p>}
@@ -535,6 +554,45 @@ export default function App() {
             </article>
           ) : (
             <p className="empty">Inspect a citation from a search result or draft section to load its grounded source context.</p>
+          )}
+        </section>
+
+        <section className="panel wide">
+          <div className="resultMeta">
+            <h2>Source Detail</h2>
+            {sourceDetail && (
+              <button type="button" className="secondary" onClick={() => setSourceDetail(null)}>
+                Clear
+              </button>
+            )}
+          </div>
+          {sourceDetail ? (
+            <article className="draft">
+              <div className="resultMeta">
+                <strong>{sourceDetail.title}</strong>
+                <span>{sourceDetail.kind}</span>
+              </div>
+              <p>{sourceDetail.location}</p>
+              {Object.keys(sourceDetail.metadata ?? {}).length > 0 && (
+                <pre>{JSON.stringify(sourceDetail.metadata, null, 2)}</pre>
+              )}
+              <div className="results">
+                {sourceDetail.chunks.map((chunk) => (
+                  <article key={chunk.id} className="resultCard">
+                    <div className="resultMeta">
+                      <strong>{chunk.section}</strong>
+                      <span>{chunk.citation}</span>
+                    </div>
+                    <p>{chunk.text}</p>
+                    <button type="button" className="secondary" onClick={() => inspectCitation(chunk.citation)}>
+                      Inspect citation
+                    </button>
+                  </article>
+                ))}
+              </div>
+            </article>
+          ) : (
+            <p className="empty">Inspect a source from the indexed source list to review its metadata and chunk inventory.</p>
           )}
         </section>
       </main>

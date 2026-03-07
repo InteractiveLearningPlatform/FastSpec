@@ -226,6 +226,45 @@ func TestInspectCitationReturnsSourceContext(t *testing.T) {
 	}
 }
 
+func TestInspectSourceReturnsFullDocument(t *testing.T) {
+	store := &memoryStore{
+		documents: []domain.SourceDocument{
+			{
+				ID:         "doc-1",
+				Kind:       domain.SourceKindDocx,
+				Title:      "Imported Notes",
+				Location:   "notes/product.docx",
+				ImportedAt: time.Now().UTC(),
+				Metadata:   map[string]string{"team": "platform"},
+				Chunks: []domain.Chunk{
+					{ID: "chunk-1", SourceID: "doc-1", Section: "Goals", Text: "Support grounded draft review.", Citation: "product.docx > Goals"},
+				},
+			},
+		},
+	}
+	service := NewService(store, stubDOCXImporter{}, stubConfluenceImporter{}, stubIndexer{}, "")
+
+	document, err := service.InspectSource(context.Background(), "doc-1")
+	if err != nil {
+		t.Fatalf("inspect source failed: %v", err)
+	}
+	if document.Title != "Imported Notes" {
+		t.Fatalf("unexpected source title: %s", document.Title)
+	}
+	if len(document.Chunks) != 1 {
+		t.Fatalf("expected 1 chunk, got %d", len(document.Chunks))
+	}
+}
+
+func TestInspectSourceRejectsMissingID(t *testing.T) {
+	service := NewService(&memoryStore{}, stubDOCXImporter{}, stubConfluenceImporter{}, stubIndexer{}, "")
+
+	_, err := service.InspectSource(context.Background(), "missing-source")
+	if err == nil || !strings.Contains(err.Error(), "was not found") {
+		t.Fatalf("expected missing source error, got %v", err)
+	}
+}
+
 func TestInspectCitationRejectsMissingCitation(t *testing.T) {
 	service := NewService(&memoryStore{}, stubDOCXImporter{}, stubConfluenceImporter{}, stubIndexer{}, "")
 

@@ -81,6 +81,25 @@ func (s *Service) ListSources(ctx context.Context) ([]domain.SourceDocument, err
 	return s.store.List(ctx)
 }
 
+func (s *Service) InspectSource(ctx context.Context, sourceID string) (domain.SourceDocument, error) {
+	sourceID = strings.TrimSpace(sourceID)
+	if sourceID == "" {
+		return domain.SourceDocument{}, fmt.Errorf("source_id is required")
+	}
+
+	documents, err := s.store.List(ctx)
+	if err != nil {
+		return domain.SourceDocument{}, err
+	}
+	for _, document := range documents {
+		if document.ID == sourceID {
+			return document, nil
+		}
+	}
+
+	return domain.SourceDocument{}, fmt.Errorf("source %q was not found", sourceID)
+}
+
 func (s *Service) InspectCitation(ctx context.Context, citation string) (domain.CitationInspection, error) {
 	citation = strings.TrimSpace(citation)
 	if citation == "" {

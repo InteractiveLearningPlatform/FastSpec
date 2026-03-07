@@ -26,9 +26,10 @@ It exists to bridge the gap between:
 4. Generate reviewable draft specs with source citations.
 5. Review and edit draft titles, summaries, sections, and citations in the workbench.
 6. Inspect any citation to reopen the grounded source chunk behind it.
-7. Export accepted drafts into durable OpenSpec markdown or FastSpec YAML files.
-8. Optionally target an active OpenSpec change artifact directly instead of a generic output path.
-9. Narrow retrieval and drafting with source-kind, source-origin, and location filters when the corpus mixes imported docs and repository specs.
+7. Inspect indexed sources directly to review source metadata and chunk inventories.
+8. Export accepted drafts into durable OpenSpec markdown or FastSpec YAML files.
+9. Optionally target an active OpenSpec change artifact directly instead of a generic output path.
+10. Narrow retrieval and drafting with source-kind, source-origin, and location filters when the corpus mixes imported docs and repository specs.
 
 ## Design Constraints
 
@@ -41,6 +42,7 @@ It exists to bridge the gap between:
 - Keep retrieval filters simple and source-oriented so they stay compatible with later platform-scale search work.
 - Let reviewers refine generated drafts before export, while keeping export validation on the backend.
 - Keep citation verification close to the draft review workflow.
+- Keep source-level corpus review available from the indexed source list.
 
 ## Local Development
 
@@ -120,3 +122,16 @@ The citation inspector resolves the citation string back to the stored source an
 - source metadata when available
 
 This keeps evidence review inside the workbench instead of forcing reviewers to infer grounding from citation labels alone.
+
+## Source Detail Review
+
+Speclist now lets operators inspect indexed sources directly from the source list.
+
+The source detail panel shows:
+
+- source title and kind
+- source location
+- source metadata when available
+- the full chunk inventory for that source
+
+Each chunk in the source detail panel can also reopen citation inspection, so corpus review and evidence review remain connected.

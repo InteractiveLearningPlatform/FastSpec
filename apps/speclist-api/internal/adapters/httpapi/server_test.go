@@ -190,3 +190,48 @@ func TestInspectCitationEndpointReturnsSourceContext(t *testing.T) {
 		t.Fatalf("expected source location, got %s", inspection.Source.Location)
 	}
 }
+
+func TestInspectSourceEndpointReturnsDocument(t *testing.T) {
+	service := app.NewService(seededStore{
+		documents: []domain.SourceDocument{
+			{
+				ID:       "doc-1",
+				Kind:     domain.SourceKindDocx,
+				Title:    "Imported Search Notes",
+				Location: "notes/search.docx",
+				Metadata: map[string]string{"team": "search"},
+				Chunks: []domain.Chunk{
+					{ID: "chunk-2", SourceID: "doc-1", Section: "Notes", Text: "Imported notes mention search.", Citation: "notes.docx > Notes"},
+				},
+			},
+		},
+	}, emptyDOCX{}, emptyConfluence{}, emptyIndexer{}, "")
+	server := NewServer(service, "")
+
+	body, err := json.Marshal(map[string]any{"source_id": "doc-1"})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/sources/inspect", bytes.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("unexpected status %d: %s", recorder.Code, recorder.Body.String())
+	}
+
+	var payload struct {
+		Source domain.SourceDocument `json:"source"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.Source.Title != "Imported Search Notes" {
+		t.Fatalf("expected source title, got %s", payload.Source.Title)
+	}
+	if len(payload.Source.Chunks) != 1 {
+		t.Fatalf("expected 1 chunk, got %d", len(payload.Source.Chunks))
+	}
+}
