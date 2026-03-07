@@ -36,9 +36,10 @@ It exists to bridge the gap between:
 14. Duplicate draft sections during review to branch local variations quickly.
 15. Collapse inactive draft sections during review to keep long drafts easier to scan.
 16. Collapse or reopen the whole draft in one action when section-level folding is still too granular.
-17. Export accepted drafts into durable OpenSpec markdown or FastSpec YAML files.
-18. Optionally target an active OpenSpec change artifact directly instead of a generic output path.
-19. Narrow retrieval and drafting with source-kind, source-origin, and location filters when the corpus mixes imported docs and repository specs.
+17. Navigate long drafts through a compact outline instead of scrolling section by section.
+18. Export accepted drafts into durable OpenSpec markdown or FastSpec YAML files.
+19. Optionally target an active OpenSpec change artifact directly instead of a generic output path.
+20. Narrow retrieval and drafting with source-kind, source-origin, and location filters when the corpus mixes imported docs and repository specs.
 
 ## Design Constraints
 
@@ -61,6 +62,7 @@ It exists to bridge the gap between:
 - Let reviewers branch an existing section into a local variation without copy-paste.
 - Let reviewers reduce visual noise in long drafts without hiding the draft structure entirely.
 - Let reviewers switch between focused and full-draft review modes quickly.
+- Let reviewers jump directly to a section in long drafts.
 
 ## Local Development
 
@@ -238,6 +240,19 @@ Bulk controls:
 - restore every section to expanded state without changing draft content
 
 This keeps long review sessions practical after sections have been added, duplicated, or reordered.
+
+## Draft Outline
+
+Speclist now shows a compact draft outline above the section editor.
+
+The outline:
+
+- lists the current sections in order
+- shows review status and collapsed state context
+- jumps to the selected section in the draft
+- reopens the selected section if it was collapsed
+
+This keeps navigation lightweight without adding a separate routing or multi-pane review system.
 
 ## Citation Inspection
 

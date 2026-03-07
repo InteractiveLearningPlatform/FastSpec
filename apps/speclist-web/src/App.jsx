@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const apiBase = import.meta.env.VITE_API_BASE ?? "http://localhost:8080";
 
@@ -48,6 +48,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [confluence, setConfluence] = useState(initialConfluence);
   const [exportConfig, setExportConfig] = useState(initialExport);
+  const sectionRefs = useRef([]);
 
   useEffect(() => {
     void refreshSources();
@@ -287,6 +288,18 @@ export default function App() {
     setCollapsedSections({});
   }
 
+  function focusSection(index) {
+    setCollapsedSections((current) => {
+      if (!current[index]) {
+        return current;
+      }
+      return { ...current, [index]: false };
+    });
+    setTimeout(() => {
+      sectionRefs.current[index]?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  }
+
   function resetReview() {
     if (!originalDraft) {
       return;
@@ -441,8 +454,31 @@ export default function App() {
                   placeholder="Draft summary"
                 />
               </div>
+              <div className="panel">
+                <h3>Draft Outline</h3>
+                <div className="stack">
+                  {draft.sections.map((section, index) => (
+                    <button
+                      key={`outline-${section.heading}-${index}`}
+                      type="button"
+                      className="secondary"
+                      onClick={() => focusSection(index)}
+                    >
+                      {`Section ${index + 1}: ${section.heading || "Untitled section"} | ${titleCase(
+                        reviewFlags[index]?.status || "ready",
+                      )}${collapsedSections[index] ? " | Collapsed" : ""}`}
+                    </button>
+                  ))}
+                </div>
+              </div>
               {draft.sections.map((section, index) => (
-                <section key={`${section.heading}-${index}`} className="draftSection">
+                <section
+                  key={`${section.heading}-${index}`}
+                  className="draftSection"
+                  ref={(element) => {
+                    sectionRefs.current[index] = element;
+                  }}
+                >
                   {collapsedSections[index] && <p className="empty">Collapsed section</p>}
                   <div className="resultMeta">
                     <strong>Section {index + 1}</strong>
