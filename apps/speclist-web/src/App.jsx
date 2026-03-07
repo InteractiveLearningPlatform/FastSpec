@@ -235,6 +235,23 @@ export default function App() {
     setReviewFlags((current) => shiftFlagsAfterRemoval(current, index));
   }
 
+  function moveSection(index, direction) {
+    setDraft((current) => {
+      if (!current) {
+        return current;
+      }
+      const targetIndex = index + direction;
+      if (targetIndex < 0 || targetIndex >= current.sections.length) {
+        return current;
+      }
+      return {
+        ...current,
+        sections: moveItem(current.sections, index, targetIndex),
+      };
+    });
+    setReviewFlags((current) => moveFlag(current, index, index + direction));
+  }
+
   function resetReview() {
     if (!originalDraft) {
       return;
@@ -392,13 +409,31 @@ export default function App() {
                 <section key={`${section.heading}-${index}`} className="draftSection">
                   <div className="resultMeta">
                     <strong>Section {index + 1}</strong>
-                    <button
-                      type="button"
-                      className="secondary"
-                      onClick={() => removeSection(index)}
-                    >
-                      Remove
-                    </button>
+                    <div className="sourceList">
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() => moveSection(index, -1)}
+                        disabled={index === 0}
+                      >
+                        Move up
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() => moveSection(index, 1)}
+                        disabled={index === draft.sections.length - 1}
+                      >
+                        Move down
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() => removeSection(index)}
+                      >
+                        Remove
+                      </button>
+                    </div>
                   </div>
                   <div className="stack">
                     <select
@@ -897,6 +932,27 @@ function shiftFlagsAfterRemoval(flags, removedIndex) {
     }
   });
   return shifted;
+}
+
+function moveFlag(flags, fromIndex, toIndex) {
+  if (toIndex < 0) {
+    return flags;
+  }
+  const moved = {};
+  Object.entries(flags).forEach(([key, value]) => {
+    moved[Number(key)] = value;
+  });
+  const fromValue = moved[fromIndex];
+  moved[fromIndex] = moved[toIndex];
+  moved[toIndex] = fromValue;
+  return moved;
+}
+
+function moveItem(items, fromIndex, toIndex) {
+  const copy = [...items];
+  const [item] = copy.splice(fromIndex, 1);
+  copy.splice(toIndex, 0, item);
+  return copy;
 }
 
 function renderExportReadiness(draft, originalDraft, reviewFlags) {
