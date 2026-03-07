@@ -2,7 +2,10 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -171,6 +174,74 @@ func (s *Service) DraftSpec(ctx context.Context, query string, title string, for
 	}, nil
 }
 
+func (s *Service) ExportDraft(_ context.Context, request domain.DraftExportRequest) (domain.DraftExportResult, error) {
+	if strings.TrimSpace(request.TargetDir) == "" {
+		return domain.DraftExportResult{}, fmt.Errorf("target_dir is required")
+	}
+	if strings.TrimSpace(request.TargetName) == "" {
+		return domain.DraftExportResult{}, fmt.Errorf("target_name is required")
+	}
+	if strings.TrimSpace(request.Draft.Title) == "" {
+		return domain.DraftExportResult{}, fmt.Errorf("draft title is required")
+	}
+	if len(request.Draft.Sections) == 0 {
+		return domain.DraftExportResult{}, fmt.Errorf("draft must contain at least one section")
+	}
+
+	format := request.Format
+	if format == "" {
+		format = domain.ExportFormatOpenSpecMarkdown
+	}
+
+	targetDir := filepath.Clean(request.TargetDir)
+	targetName := sanitizeFilename(request.TargetName)
+	if targetName == "" {
+		return domain.DraftExportResult{}, fmt.Errorf("target_name must contain letters or numbers")
+	}
+
+	var primaryPath string
+	var sidecarPath string
+	var primaryContents string
+	switch format {
+	case domain.ExportFormatOpenSpecMarkdown:
+		primaryPath = filepath.Join(targetDir, targetName+".md")
+		sidecarPath = filepath.Join(targetDir, targetName+".sources.json")
+		primaryContents = renderOpenSpecMarkdown(request.Draft)
+	case domain.ExportFormatFastSpecYAML:
+		primaryPath = filepath.Join(targetDir, targetName+".fastspec.yaml")
+		sidecarPath = filepath.Join(targetDir, targetName+".sources.json")
+		primaryContents = renderFastSpecYAML(request.Draft, targetName)
+	default:
+		return domain.DraftExportResult{}, fmt.Errorf("unsupported export format %q", format)
+	}
+
+	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+		return domain.DraftExportResult{}, err
+	}
+	if err := ensureFilesDoNotExist(primaryPath, sidecarPath); err != nil {
+		return domain.DraftExportResult{}, err
+	}
+
+	sidecarContents, err := json.MarshalIndent(renderCitationSidecar(request.Draft, primaryPath), "", "  ")
+	if err != nil {
+		return domain.DraftExportResult{}, err
+	}
+	if err := os.WriteFile(primaryPath, []byte(primaryContents), 0o644); err != nil {
+		return domain.DraftExportResult{}, err
+	}
+	if err := os.WriteFile(sidecarPath, sidecarContents, 0o644); err != nil {
+		return domain.DraftExportResult{}, err
+	}
+
+	return domain.DraftExportResult{
+		Format: format,
+		Artifacts: []domain.ExportArtifact{
+			{Path: primaryPath, Description: "primary exported artifact"},
+			{Path: sidecarPath, Description: "citation sidecar"},
+		},
+	}, nil
+}
+
 func summarizeBundle(results []domain.RetrievalResult, start int, end int) string {
 	if len(results) == 0 || start >= end || start >= len(results) {
 		return "No grounded sources were retrieved."
@@ -273,4 +344,119 @@ func min(left int, right int) int {
 		return left
 	}
 	return right
+}
+
+func renderOpenSpecMarkdown(draft domain.DraftSpec) string {
+	var builder strings.Builder
+	builder.WriteString("# ")
+	builder.WriteString(draft.Title)
+	builder.WriteString("\n\n")
+	builder.WriteString(draft.Summary)
+	builder.WriteString("\n\n")
+	builder.WriteString("Query: `")
+	builder.WriteString(draft.Query)
+	builder.WriteString("`\n\n")
+	for _, section := range draft.Sections {
+		builder.WriteString("## ")
+		builder.WriteString(section.Heading)
+		builder.WriteString("\n\n")
+		builder.WriteString(section.Body)
+		builder.WriteString("\n\n")
+		if len(section.Citations) > 0 {
+			builder.WriteString("Citations:\n")
+			for _, citation := range section.Citations {
+				builder.WriteString("- ")
+				builder.WriteString(citation)
+				builder.WriteString("\n")
+			}
+			builder.WriteString("\n")
+		}
+	}
+	return strings.TrimSpace(builder.String()) + "\n"
+}
+
+func renderFastSpecYAML(draft domain.DraftSpec, targetName string) string {
+	var builder strings.Builder
+	builder.WriteString("apiVersion: speclist.fastspec.dev/v0alpha1\n")
+	builder.WriteString("kind: FastSpecDraft\n")
+	builder.WriteString("metadata:\n")
+	builder.WriteString("  id: ")
+	builder.WriteString(targetName)
+	builder.WriteString("\n")
+	builder.WriteString("  title: ")
+	builder.WriteString(yamlQuote(draft.Title))
+	builder.WriteString("\n")
+	builder.WriteString("  summary: ")
+	builder.WriteString(yamlQuote(draft.Summary))
+	builder.WriteString("\n")
+	builder.WriteString("spec:\n")
+	builder.WriteString("  query: ")
+	builder.WriteString(yamlQuote(draft.Query))
+	builder.WriteString("\n")
+	builder.WriteString("  sourceCount: ")
+	builder.WriteString(fmt.Sprintf("%d", draft.SourceCount))
+	builder.WriteString("\n")
+	builder.WriteString("  sections:\n")
+	for _, section := range draft.Sections {
+		builder.WriteString("    - heading: ")
+		builder.WriteString(yamlQuote(section.Heading))
+		builder.WriteString("\n")
+		builder.WriteString("      body: |-\n")
+		for _, line := range strings.Split(section.Body, "\n") {
+			builder.WriteString("        ")
+			builder.WriteString(line)
+			builder.WriteString("\n")
+		}
+		builder.WriteString("      citations:\n")
+		if len(section.Citations) == 0 {
+			builder.WriteString("        []\n")
+			continue
+		}
+		for _, citation := range section.Citations {
+			builder.WriteString("        - ")
+			builder.WriteString(yamlQuote(citation))
+			builder.WriteString("\n")
+		}
+	}
+	return builder.String()
+}
+
+func renderCitationSidecar(draft domain.DraftSpec, primaryPath string) map[string]any {
+	sections := make([]map[string]any, 0, len(draft.Sections))
+	for _, section := range draft.Sections {
+		sections = append(sections, map[string]any{
+			"heading":   section.Heading,
+			"citations": section.Citations,
+		})
+	}
+	return map[string]any{
+		"title":    draft.Title,
+		"query":    draft.Query,
+		"artifact": primaryPath,
+		"sections": sections,
+	}
+}
+
+func ensureFilesDoNotExist(paths ...string) error {
+	for _, path := range paths {
+		if _, err := os.Stat(path); err == nil {
+			return fmt.Errorf("export target already exists: %s", path)
+		} else if !os.IsNotExist(err) {
+			return err
+		}
+	}
+	return nil
+}
+
+func sanitizeFilename(input string) string {
+	input = strings.ToLower(strings.TrimSpace(input))
+	replacer := strings.NewReplacer(" ", "-", "/", "-", "\\", "-", ":", "-", ".", "-", "`", "", "\"", "", "'", "")
+	input = replacer.Replace(input)
+	input = strings.Trim(input, "-")
+	return input
+}
+
+func yamlQuote(input string) string {
+	input = strings.ReplaceAll(input, "\"", "\\\"")
+	return "\"" + input + "\""
 }

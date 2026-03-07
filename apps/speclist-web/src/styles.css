@@ -17,7 +17,8 @@ body {
 
 button,
 input,
-textarea {
+textarea,
+select {
   font: inherit;
 }
 
@@ -109,7 +110,8 @@ h1 {
 }
 
 input,
-textarea {
+textarea,
+select {
   border: 1px solid rgba(24, 34, 47, 0.14);
   border-radius: 14px;
   padding: 12px 14px;
@@ -163,6 +165,13 @@ button:hover:not(:disabled) {
   gap: 12px;
 }
 
+.exportForm,
+.exportResult {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(24, 34, 47, 0.08);
+}
+
 .resultCard,
 .sourceCard,
 .draftSection {
@@ -194,6 +203,12 @@ button:hover:not(:disabled) {
   margin: 0;
   font-family: "IBM Plex Mono", monospace;
   line-height: 1.5;
+}
+
+.exportResult ul,
+.draftSection ul {
+  margin: 8px 0 0;
+  padding-left: 20px;
 }
 
 .draftSummary,

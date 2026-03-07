@@ -8,6 +8,7 @@ Responsibilities:
 - import Confluence pages into the same corpus
 - index existing FastSpec and OpenSpec artifacts from the repo
 - expose retrieval bundles and draft-generation endpoints
+- export reviewed drafts into OpenSpec markdown or FastSpec YAML files
 
 Architecture:
 

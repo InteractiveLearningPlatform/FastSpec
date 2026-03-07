@@ -66,6 +66,30 @@ type DraftSpec struct {
 	SourceCount int            `json:"source_count"`
 }
 
+type ExportFormat string
+
+const (
+	ExportFormatOpenSpecMarkdown ExportFormat = "openspec-markdown"
+	ExportFormatFastSpecYAML     ExportFormat = "fastspec-yaml"
+)
+
+type DraftExportRequest struct {
+	Draft      DraftSpec    `json:"draft"`
+	Format     ExportFormat `json:"format"`
+	TargetDir  string       `json:"target_dir"`
+	TargetName string       `json:"target_name"`
+}
+
+type ExportArtifact struct {
+	Path        string `json:"path"`
+	Description string `json:"description"`
+}
+
+type DraftExportResult struct {
+	Format    ExportFormat     `json:"format"`
+	Artifacts []ExportArtifact `json:"artifacts"`
+}
+
 type CorpusStore interface {
 	Save(ctx context.Context, document SourceDocument) error
 	List(ctx context.Context) ([]SourceDocument, error)

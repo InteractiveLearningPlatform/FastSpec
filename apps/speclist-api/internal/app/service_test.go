@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -100,5 +102,65 @@ func TestDraftSpecIncludesCitations(t *testing.T) {
 	}
 	if len(draft.Sections[0].Citations) == 0 {
 		t.Fatal("expected citations in draft")
+	}
+}
+
+func TestExportDraftWritesMarkdownAndSidecar(t *testing.T) {
+	service := NewService(&memoryStore{}, stubDOCXImporter{}, stubConfluenceImporter{}, stubIndexer{})
+	targetDir := t.TempDir()
+
+	result, err := service.ExportDraft(context.Background(), domain.DraftExportRequest{
+		Draft: domain.DraftSpec{
+			Title:       "Exported Draft",
+			Query:       "reviewed draft export",
+			Summary:     "Draft summary",
+			SourceCount: 1,
+			Sections: []domain.DraftSection{
+				{Heading: "Why", Body: "Need a durable artifact.", Citations: []string{"notes.docx > Why"}},
+			},
+		},
+		Format:     domain.ExportFormatOpenSpecMarkdown,
+		TargetDir:  targetDir,
+		TargetName: "exported-draft",
+	})
+	if err != nil {
+		t.Fatalf("export failed: %v", err)
+	}
+	if len(result.Artifacts) != 2 {
+		t.Fatalf("expected 2 artifacts, got %d", len(result.Artifacts))
+	}
+	contents, err := os.ReadFile(filepath.Join(targetDir, "exported-draft.md"))
+	if err != nil {
+		t.Fatalf("read exported markdown: %v", err)
+	}
+	if string(contents) == "" {
+		t.Fatal("expected markdown content")
+	}
+}
+
+func TestExportDraftRejectsOverwrite(t *testing.T) {
+	service := NewService(&memoryStore{}, stubDOCXImporter{}, stubConfluenceImporter{}, stubIndexer{})
+	targetDir := t.TempDir()
+	path := filepath.Join(targetDir, "existing.md")
+	if err := os.WriteFile(path, []byte("occupied"), 0o644); err != nil {
+		t.Fatalf("write existing file: %v", err)
+	}
+
+	_, err := service.ExportDraft(context.Background(), domain.DraftExportRequest{
+		Draft: domain.DraftSpec{
+			Title:       "Existing Draft",
+			Query:       "overwrite check",
+			Summary:     "Draft summary",
+			SourceCount: 1,
+			Sections: []domain.DraftSection{
+				{Heading: "Why", Body: "Need a durable artifact.", Citations: []string{"notes.docx > Why"}},
+			},
+		},
+		Format:     domain.ExportFormatOpenSpecMarkdown,
+		TargetDir:  targetDir,
+		TargetName: "existing",
+	})
+	if err == nil {
+		t.Fatal("expected overwrite rejection")
 	}
 }

@@ -20,7 +20,7 @@ It exists to bridge the gap between:
 2. Index existing FastSpec and OpenSpec repository artifacts.
 3. Search for grounded context bundles instead of raw documents.
 4. Generate reviewable draft specs with source citations.
-5. Move accepted drafts into durable FastSpec or OpenSpec artifacts.
+5. Export accepted drafts into durable OpenSpec markdown or FastSpec YAML files.
 
 ## Design Constraints
 
@@ -28,6 +28,7 @@ It exists to bridge the gap between:
 - Preserve provenance for every returned excerpt.
 - Keep the backend domain independent from storage, HTTP, and source-specific adapters.
 - Treat generated drafts as reviewable candidates, not final truth.
+- Require explicit export destinations and avoid silent overwrite of existing files.
 
 ## Local Development
 
@@ -45,3 +46,14 @@ cd apps/speclist-web
 npm install
 npm run dev
 ```
+
+## Exported Artifacts
+
+Speclist currently exports reviewed drafts in two formats:
+
+- `openspec-markdown`
+  writes a markdown file plus a citation sidecar JSON file
+- `fastspec-yaml`
+  writes a YAML draft file plus the same citation sidecar JSON file
+
+The backend requires an explicit target directory and target name for every export.
