@@ -64,4 +64,6 @@ OpenSpec-aware export currently supports writing into active change targets for:
 - `tasks.md`
 - `specs/<capability>/spec.md`
 
+When exporting into those OpenSpec targets, Speclist now renders typed artifact templates instead of a single generic markdown draft shape.
+
 The backend requires an explicit target directory and target name for every export.
