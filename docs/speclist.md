@@ -34,9 +34,10 @@ It exists to bridge the gap between:
 12. Reset the current review back to the original generated draft when needed.
 13. Reorder draft sections during review without recreating them.
 14. Duplicate draft sections during review to branch local variations quickly.
-15. Export accepted drafts into durable OpenSpec markdown or FastSpec YAML files.
-16. Optionally target an active OpenSpec change artifact directly instead of a generic output path.
-17. Narrow retrieval and drafting with source-kind, source-origin, and location filters when the corpus mixes imported docs and repository specs.
+15. Collapse inactive draft sections during review to keep long drafts easier to scan.
+16. Export accepted drafts into durable OpenSpec markdown or FastSpec YAML files.
+17. Optionally target an active OpenSpec change artifact directly instead of a generic output path.
+18. Narrow retrieval and drafting with source-kind, source-origin, and location filters when the corpus mixes imported docs and repository specs.
 
 ## Design Constraints
 
@@ -57,6 +58,7 @@ It exists to bridge the gap between:
 - Let reviewers restart from the generated baseline without regenerating a draft.
 - Let reviewers refine section order during review without rebuilding the draft.
 - Let reviewers branch an existing section into a local variation without copy-paste.
+- Let reviewers reduce visual noise in long drafts without hiding the draft structure entirely.
 
 ## Local Development
 
@@ -209,6 +211,19 @@ Duplication preserves:
 - the rest of the in-memory review state
 
 The duplicated section is inserted next to the original so the reviewer can refine the copy immediately.
+
+## Section Collapse
+
+Speclist now lets reviewers collapse inactive draft sections during review.
+
+Collapsed sections preserve:
+
+- section position
+- heading visibility
+- section controls
+- review state alignment during reorder, duplication, removal, and reset
+
+Reset restores the generated draft in a fully expanded state.
 
 ## Citation Inspection
 

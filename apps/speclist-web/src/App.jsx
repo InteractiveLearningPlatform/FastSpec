@@ -39,6 +39,7 @@ export default function App() {
   const [draft, setDraft] = useState(null);
   const [originalDraft, setOriginalDraft] = useState(null);
   const [reviewFlags, setReviewFlags] = useState({});
+  const [collapsedSections, setCollapsedSections] = useState({});
   const [citationInspection, setCitationInspection] = useState(null);
   const [sourceDetail, setSourceDetail] = useState(null);
   const [exportResult, setExportResult] = useState(null);
@@ -148,6 +149,7 @@ export default function App() {
       setDraft(payload);
       setOriginalDraft(structuredClone(payload));
       setReviewFlags({});
+      setCollapsedSections({});
       setExportResult(null);
       setExportConfig((current) => ({
         ...current,
@@ -233,6 +235,7 @@ export default function App() {
       sections: current.sections.filter((_, currentIndex) => currentIndex !== index),
     }));
     setReviewFlags((current) => shiftFlagsAfterRemoval(current, index));
+    setCollapsedSections((current) => shiftFlagsAfterRemoval(current, index));
   }
 
   function moveSection(index, direction) {
@@ -250,6 +253,7 @@ export default function App() {
       };
     });
     setReviewFlags((current) => moveFlag(current, index, index + direction));
+    setCollapsedSections((current) => moveFlag(current, index, index + direction));
   }
 
   function duplicateSection(index) {
@@ -263,6 +267,14 @@ export default function App() {
       };
     });
     setReviewFlags((current) => duplicateFlag(current, index));
+    setCollapsedSections((current) => duplicateFlag(current, index));
+  }
+
+  function toggleSectionCollapse(index) {
+    setCollapsedSections((current) => ({
+      ...current,
+      [index]: !current[index],
+    }));
   }
 
   function resetReview() {
@@ -271,6 +283,7 @@ export default function App() {
     }
     setDraft(structuredClone(originalDraft));
     setReviewFlags({});
+    setCollapsedSections({});
     setExportResult(null);
     setMessage("Reset review state to the original generated draft.");
     setError("");
@@ -420,9 +433,17 @@ export default function App() {
               </div>
               {draft.sections.map((section, index) => (
                 <section key={`${section.heading}-${index}`} className="draftSection">
+                  {collapsedSections[index] && <p className="empty">Collapsed section</p>}
                   <div className="resultMeta">
                     <strong>Section {index + 1}</strong>
                     <div className="sourceList">
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() => toggleSectionCollapse(index)}
+                      >
+                        {collapsedSections[index] ? "Expand" : "Collapse"}
+                      </button>
                       <button
                         type="button"
                         className="secondary"
@@ -455,71 +476,82 @@ export default function App() {
                       </button>
                     </div>
                   </div>
-                  <div className="stack">
-                    <select
-                      value={reviewFlags[index]?.status || "ready"}
-                      onChange={(event) => updateReviewFlag(index, { status: event.target.value })}
-                    >
-                      {reviewStatuses.map((status) => (
-                        <option key={status} value={status}>
-                          {titleCase(status)}
-                        </option>
-                      ))}
-                    </select>
-                    <textarea
-                      value={reviewFlags[index]?.note || ""}
-                      onChange={(event) => updateReviewFlag(index, { note: event.target.value })}
-                      rows={2}
-                      placeholder="Optional review note"
-                    />
-                  </div>
-                  <input
-                    value={section.heading}
-                    onChange={(event) =>
-                      updateDraft((current) => ({
-                        ...current,
-                        sections: updateSection(current.sections, index, { heading: event.target.value }),
-                      }))
-                    }
-                    placeholder="Section heading"
-                  />
-                  <textarea
-                    value={section.body}
-                    onChange={(event) =>
-                      updateDraft((current) => ({
-                        ...current,
-                        sections: updateSection(current.sections, index, { body: event.target.value }),
-                      }))
-                    }
-                    rows={6}
-                    placeholder="Section body"
-                  />
-                  <textarea
-                    value={section.citations.join("\n")}
-                    onChange={(event) =>
-                      updateDraft((current) => ({
-                        ...current,
-                        sections: updateSection(current.sections, index, {
-                          citations: splitCitations(event.target.value),
-                        }),
-                      }))
-                    }
-                    rows={3}
-                    placeholder="One citation per line"
-                  />
-                  {section.citations.length > 0 && (
-                    <div className="sourceList">
-                      {section.citations.map((citation) => (
-                        <button
-                          key={`${citation}-${index}`}
-                          type="button"
-                          className="secondary"
-                          onClick={() => inspectCitation(citation)}
+                  {collapsedSections[index] ? (
+                    <article className="resultCard">
+                      <strong>{section.heading || "Untitled section"}</strong>
+                      <p>Status: {titleCase(reviewFlags[index]?.status || "ready")}</p>
+                      {String(reviewFlags[index]?.note || "").trim() && <p>Note: {reviewFlags[index].note.trim()}</p>}
+                      <p>Citations: {section.citations.length}</p>
+                    </article>
+                  ) : (
+                    <>
+                      <div className="stack">
+                        <select
+                          value={reviewFlags[index]?.status || "ready"}
+                          onChange={(event) => updateReviewFlag(index, { status: event.target.value })}
                         >
-                          Inspect {citation}
-                        </button>
-                      ))}
-                    </div>
+                          {reviewStatuses.map((status) => (
+                            <option key={status} value={status}>
+                              {titleCase(status)}
+                            </option>
+                          ))}
+                        </select>
+                        <textarea
+                          value={reviewFlags[index]?.note || ""}
+                          onChange={(event) => updateReviewFlag(index, { note: event.target.value })}
+                          rows={2}
+                          placeholder="Optional review note"
+                        />
+                      </div>
+                      <input
+                        value={section.heading}
+                        onChange={(event) =>
+                          updateDraft((current) => ({
+                            ...current,
+                            sections: updateSection(current.sections, index, { heading: event.target.value }),
+                          }))
+                        }
+                        placeholder="Section heading"
+                      />
+                      <textarea
+                        value={section.body}
+                        onChange={(event) =>
+                          updateDraft((current) => ({
+                            ...current,
+                            sections: updateSection(current.sections, index, { body: event.target.value }),
+                          }))
+                        }
+                        rows={6}
+                        placeholder="Section body"
+                      />
+                      <textarea
+                        value={section.citations.join("\n")}
+                        onChange={(event) =>
+                          updateDraft((current) => ({
+                            ...current,
+                            sections: updateSection(current.sections, index, {
+                              citations: splitCitations(event.target.value),
+                            }),
+                          }))
+                        }
+                        rows={3}
+                        placeholder="One citation per line"
+                      />
+                      {section.citations.length > 0 && (
+                        <div className="sourceList">
+                          {section.citations.map((citation) => (
+                            <button
+                              key={`${citation}-${index}`}
+                              type="button"
+                              className="secondary"
+                              onClick={() => inspectCitation(citation)}
+                            >
+                              Inspect {citation}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </>
                   )}
                 </section>
               ))}
