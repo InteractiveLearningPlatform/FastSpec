@@ -36,6 +36,7 @@ export default function App() {
   const [draftTitle, setDraftTitle] = useState("Speclist Draft");
   const [draftPreset, setDraftPreset] = useState("general");
   const [draft, setDraft] = useState(null);
+  const [originalDraft, setOriginalDraft] = useState(null);
   const [citationInspection, setCitationInspection] = useState(null);
   const [sourceDetail, setSourceDetail] = useState(null);
   const [exportResult, setExportResult] = useState(null);
@@ -143,6 +144,7 @@ export default function App() {
       });
       const payload = await assertOk(response);
       setDraft(payload);
+      setOriginalDraft(structuredClone(payload));
       setExportResult(null);
       setExportConfig((current) => ({
         ...current,
@@ -436,6 +438,10 @@ export default function App() {
               >
                 Add section
               </button>
+              <div className="panel">
+                <h3>Draft Diff</h3>
+                {renderDraftDiff(originalDraft, draft)}
+              </div>
               <form className="stack exportForm" onSubmit={handleExport}>
                 <h3>Export Reviewed Draft</h3>
                 <select
@@ -683,4 +689,125 @@ function titleCase(input) {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+function renderDraftDiff(originalDraft, currentDraft) {
+  if (!originalDraft || !currentDraft) {
+    return <p className="empty">Generate a draft to inspect differences.</p>;
+  }
+
+  const sections = buildSectionDiffs(originalDraft.sections ?? [], currentDraft.sections ?? []);
+  const hasTopLevelChanges =
+    originalDraft.title !== currentDraft.title ||
+    originalDraft.summary !== currentDraft.summary ||
+    (originalDraft.preset || "general") !== (currentDraft.preset || "general");
+  const hasSectionChanges = sections.some((section) => section.kind !== "unchanged");
+
+  if (!hasTopLevelChanges && !hasSectionChanges) {
+    return <p className="empty">No edits yet. The current draft still matches the generated draft.</p>;
+  }
+
+  return (
+    <div className="stack">
+      {originalDraft.title !== currentDraft.title && (
+        <article className="resultCard">
+          <strong>Title changed</strong>
+          <p>Original: {originalDraft.title}</p>
+          <p>Current: {currentDraft.title}</p>
+        </article>
+      )}
+      {originalDraft.summary !== currentDraft.summary && (
+        <article className="resultCard">
+          <strong>Summary changed</strong>
+          <p>Original: {originalDraft.summary}</p>
+          <p>Current: {currentDraft.summary}</p>
+        </article>
+      )}
+      {(originalDraft.preset || "general") !== (currentDraft.preset || "general") && (
+        <article className="resultCard">
+          <strong>Preset changed</strong>
+          <p>Original: {titleCase(originalDraft.preset || "general")}</p>
+          <p>Current: {titleCase(currentDraft.preset || "general")}</p>
+        </article>
+      )}
+      {sections
+        .filter((section) => section.kind !== "unchanged")
+        .map((section) => (
+          <article key={section.key} className="resultCard">
+            <strong>{section.label}</strong>
+            {section.kind === "added" ? (
+              <>
+                <p>Heading: {section.current.heading}</p>
+                <p>Body: {section.current.body}</p>
+              </>
+            ) : section.kind === "removed" ? (
+              <>
+                <p>Heading: {section.original.heading}</p>
+                <p>Body: {section.original.body}</p>
+              </>
+            ) : (
+              <>
+                {section.original.heading !== section.current.heading && (
+                  <p>
+                    Heading: {section.original.heading} {"->"} {section.current.heading}
+                  </p>
+                )}
+                {section.original.body !== section.current.body && (
+                  <p>
+                    Body changed from:
+                    {" "}
+                    {clipForDiff(section.original.body)}
+                    {" "}
+                    {"->"} {clipForDiff(section.current.body)}
+                  </p>
+                )}
+                {joinCitations(section.original.citations) !== joinCitations(section.current.citations) && (
+                  <p>
+                    Citations: {joinCitations(section.original.citations)} {"->"} {joinCitations(section.current.citations)}
+                  </p>
+                )}
+              </>
+            )}
+          </article>
+        ))}
+    </div>
+  );
+}
+
+function buildSectionDiffs(originalSections, currentSections) {
+  const length = Math.max(originalSections.length, currentSections.length);
+  const diffs = [];
+  for (let index = 0; index < length; index += 1) {
+    const original = originalSections[index];
+    const current = currentSections[index];
+    if (!original && current) {
+      diffs.push({ key: `section-${index}`, label: `Section ${index + 1} added`, kind: "added", current });
+      continue;
+    }
+    if (original && !current) {
+      diffs.push({ key: `section-${index}`, label: `Section ${index + 1} removed`, kind: "removed", original });
+      continue;
+    }
+    const changed =
+      original.heading !== current.heading ||
+      original.body !== current.body ||
+      joinCitations(original.citations) !== joinCitations(current.citations);
+    diffs.push({
+      key: `section-${index}`,
+      label: changed ? `Section ${index + 1} changed` : `Section ${index + 1}`,
+      kind: changed ? "changed" : "unchanged",
+      original,
+      current,
+    });
+  }
+  return diffs;
+}
+
+function joinCitations(citations = []) {
+  return citations.join(" | ");
+}
+
+function clipForDiff(input) {
+  const value = String(input || "").trim();
+  return value.length > 120 ? `${value.slice(0, 117)}...` : value || "(empty)";
 }
