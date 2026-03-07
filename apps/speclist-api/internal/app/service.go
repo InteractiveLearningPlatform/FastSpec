@@ -81,6 +81,40 @@ func (s *Service) ListSources(ctx context.Context) ([]domain.SourceDocument, err
 	return s.store.List(ctx)
 }
 
+func (s *Service) InspectCitation(ctx context.Context, citation string) (domain.CitationInspection, error) {
+	citation = strings.TrimSpace(citation)
+	if citation == "" {
+		return domain.CitationInspection{}, fmt.Errorf("citation is required")
+	}
+
+	documents, err := s.store.List(ctx)
+	if err != nil {
+		return domain.CitationInspection{}, err
+	}
+
+	for _, document := range documents {
+		source := domain.SourceStub{
+			ID:       document.ID,
+			Kind:     document.Kind,
+			Title:    document.Title,
+			Location: document.Location,
+			Metadata: document.Metadata,
+		}
+		for _, chunk := range document.Chunks {
+			if chunk.Citation != citation {
+				continue
+			}
+			return domain.CitationInspection{
+				Citation: citation,
+				Source:   source,
+				Chunk:    chunk,
+			}, nil
+		}
+	}
+
+	return domain.CitationInspection{}, fmt.Errorf("citation %q was not found", citation)
+}
+
 func (s *Service) Search(ctx context.Context, query string, limit int, filters domain.RetrievalFilter) (domain.RetrievalBundle, error) {
 	if strings.TrimSpace(query) == "" {
 		return domain.RetrievalBundle{}, fmt.Errorf("query is required")

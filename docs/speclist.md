@@ -25,9 +25,10 @@ It exists to bridge the gap between:
 3. Search for grounded context bundles instead of raw documents.
 4. Generate reviewable draft specs with source citations.
 5. Review and edit draft titles, summaries, sections, and citations in the workbench.
-6. Export accepted drafts into durable OpenSpec markdown or FastSpec YAML files.
-7. Optionally target an active OpenSpec change artifact directly instead of a generic output path.
-8. Narrow retrieval and drafting with source-kind, source-origin, and location filters when the corpus mixes imported docs and repository specs.
+6. Inspect any citation to reopen the grounded source chunk behind it.
+7. Export accepted drafts into durable OpenSpec markdown or FastSpec YAML files.
+8. Optionally target an active OpenSpec change artifact directly instead of a generic output path.
+9. Narrow retrieval and drafting with source-kind, source-origin, and location filters when the corpus mixes imported docs and repository specs.
 
 ## Design Constraints
 
@@ -39,6 +40,7 @@ It exists to bridge the gap between:
 - Keep the workbench as one platform surface, not the full product boundary.
 - Keep retrieval filters simple and source-oriented so they stay compatible with later platform-scale search work.
 - Let reviewers refine generated drafts before export, while keeping export validation on the backend.
+- Keep citation verification close to the draft review workflow.
 
 ## Local Development
 
@@ -101,3 +103,20 @@ After generation, the workbench keeps the draft in editable state:
 - reviewers can add or remove sections before export
 
 This editing flow remains in-memory only. The backend validates the edited draft during export so invalid reviewer edits do not produce partial artifacts.
+
+## Citation Inspection
+
+Speclist now lets reviewers inspect grounded source context for any citation visible in:
+
+- retrieval results
+- draft section citation lists
+
+The citation inspector resolves the citation string back to the stored source and chunk, then shows:
+
+- source title
+- source location
+- cited section
+- cited excerpt
+- source metadata when available
+
+This keeps evidence review inside the workbench instead of forcing reviewers to infer grounding from citation labels alone.
