@@ -35,9 +35,10 @@ It exists to bridge the gap between:
 13. Reorder draft sections during review without recreating them.
 14. Duplicate draft sections during review to branch local variations quickly.
 15. Collapse inactive draft sections during review to keep long drafts easier to scan.
-16. Export accepted drafts into durable OpenSpec markdown or FastSpec YAML files.
-17. Optionally target an active OpenSpec change artifact directly instead of a generic output path.
-18. Narrow retrieval and drafting with source-kind, source-origin, and location filters when the corpus mixes imported docs and repository specs.
+16. Collapse or reopen the whole draft in one action when section-level folding is still too granular.
+17. Export accepted drafts into durable OpenSpec markdown or FastSpec YAML files.
+18. Optionally target an active OpenSpec change artifact directly instead of a generic output path.
+19. Narrow retrieval and drafting with source-kind, source-origin, and location filters when the corpus mixes imported docs and repository specs.
 
 ## Design Constraints
 
@@ -59,6 +60,7 @@ It exists to bridge the gap between:
 - Let reviewers refine section order during review without rebuilding the draft.
 - Let reviewers branch an existing section into a local variation without copy-paste.
 - Let reviewers reduce visual noise in long drafts without hiding the draft structure entirely.
+- Let reviewers switch between focused and full-draft review modes quickly.
 
 ## Local Development
 
@@ -224,6 +226,18 @@ Collapsed sections preserve:
 - review state alignment during reorder, duplication, removal, and reset
 
 Reset restores the generated draft in a fully expanded state.
+
+## Bulk Collapse Controls
+
+Speclist now also lets reviewers collapse or expand the whole draft in one action.
+
+Bulk controls:
+
+- operate on the current in-memory section list
+- collapse every section into the same compact card view used by per-section collapse
+- restore every section to expanded state without changing draft content
+
+This keeps long review sessions practical after sections have been added, duplicated, or reordered.
 
 ## Citation Inspection
 
