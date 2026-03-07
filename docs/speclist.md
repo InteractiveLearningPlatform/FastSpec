@@ -29,9 +29,10 @@ It exists to bridge the gap between:
 7. Inspect indexed sources directly to review source metadata and chunk inventories.
 8. Choose a draft preset to start proposal, design, or requirements-oriented review from a better section structure.
 9. Compare the current edited draft against the original generated draft before export.
-10. Export accepted drafts into durable OpenSpec markdown or FastSpec YAML files.
-11. Optionally target an active OpenSpec change artifact directly instead of a generic output path.
-12. Narrow retrieval and drafting with source-kind, source-origin, and location filters when the corpus mixes imported docs and repository specs.
+10. Mark draft sections with lightweight review flags and notes before export.
+11. Export accepted drafts into durable OpenSpec markdown or FastSpec YAML files.
+12. Optionally target an active OpenSpec change artifact directly instead of a generic output path.
+13. Narrow retrieval and drafting with source-kind, source-origin, and location filters when the corpus mixes imported docs and repository specs.
 
 ## Design Constraints
 
@@ -47,6 +48,7 @@ It exists to bridge the gap between:
 - Keep source-level corpus review available from the indexed source list.
 - Let draft generation start from a small set of intentional review presets.
 - Keep edit review explicit by showing how the current draft differs from the generated draft.
+- Keep section-level review concerns visible during the final review pass.
 
 ## Local Development
 
@@ -138,6 +140,16 @@ The draft diff panel highlights:
 - added or removed sections
 
 This keeps the review step explicit before export without introducing server-side draft versioning.
+
+## Review Flags
+
+Speclist now lets reviewers mark each draft section with a lightweight review state:
+
+- `ready`
+- `needs-work`
+- `blocked`
+
+Each section can also carry an optional review note. The workbench summarizes all non-ready or noted sections in one review flags panel so unresolved concerns are visible before export.
 
 ## Citation Inspection
 
