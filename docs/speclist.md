@@ -33,9 +33,10 @@ It exists to bridge the gap between:
 11. Review a compact export-readiness summary before export.
 12. Reset the current review back to the original generated draft when needed.
 13. Reorder draft sections during review without recreating them.
-14. Export accepted drafts into durable OpenSpec markdown or FastSpec YAML files.
-15. Optionally target an active OpenSpec change artifact directly instead of a generic output path.
-16. Narrow retrieval and drafting with source-kind, source-origin, and location filters when the corpus mixes imported docs and repository specs.
+14. Duplicate draft sections during review to branch local variations quickly.
+15. Export accepted drafts into durable OpenSpec markdown or FastSpec YAML files.
+16. Optionally target an active OpenSpec change artifact directly instead of a generic output path.
+17. Narrow retrieval and drafting with source-kind, source-origin, and location filters when the corpus mixes imported docs and repository specs.
 
 ## Design Constraints
 
@@ -55,6 +56,7 @@ It exists to bridge the gap between:
 - Keep export decisions informed by a compact readiness summary.
 - Let reviewers restart from the generated baseline without regenerating a draft.
 - Let reviewers refine section order during review without rebuilding the draft.
+- Let reviewers branch an existing section into a local variation without copy-paste.
 
 ## Local Development
 
@@ -195,6 +197,18 @@ Reordering preserves:
 - the rest of the in-memory review state
 
 This keeps structural review lightweight without introducing drag-and-drop or server-side ordering logic.
+
+## Section Duplication
+
+Speclist now lets reviewers duplicate a draft section during review.
+
+Duplication preserves:
+
+- section content
+- section review flags
+- the rest of the in-memory review state
+
+The duplicated section is inserted next to the original so the reviewer can refine the copy immediately.
 
 ## Citation Inspection
 

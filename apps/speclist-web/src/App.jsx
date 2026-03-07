@@ -252,6 +252,19 @@ export default function App() {
     setReviewFlags((current) => moveFlag(current, index, index + direction));
   }
 
+  function duplicateSection(index) {
+    setDraft((current) => {
+      if (!current) {
+        return current;
+      }
+      return {
+        ...current,
+        sections: insertItem(current.sections, index + 1, structuredClone(current.sections[index])),
+      };
+    });
+    setReviewFlags((current) => duplicateFlag(current, index));
+  }
+
   function resetReview() {
     if (!originalDraft) {
       return;
@@ -425,6 +438,13 @@ export default function App() {
                         disabled={index === draft.sections.length - 1}
                       >
                         Move down
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() => duplicateSection(index)}
+                      >
+                        Duplicate
                       </button>
                       <button
                         type="button"
@@ -953,6 +973,28 @@ function moveItem(items, fromIndex, toIndex) {
   const [item] = copy.splice(fromIndex, 1);
   copy.splice(toIndex, 0, item);
   return copy;
+}
+
+function insertItem(items, index, item) {
+  const copy = [...items];
+  copy.splice(index, 0, item);
+  return copy;
+}
+
+function duplicateFlag(flags, sourceIndex) {
+  const duplicated = {};
+  Object.entries(flags).forEach(([key, value]) => {
+    const index = Number(key);
+    if (index <= sourceIndex) {
+      duplicated[index] = value;
+    } else {
+      duplicated[index + 1] = value;
+    }
+  });
+  if (flags[sourceIndex]) {
+    duplicated[sourceIndex + 1] = structuredClone(flags[sourceIndex]);
+  }
+  return duplicated;
 }
 
 function renderExportReadiness(draft, originalDraft, reviewFlags) {
