@@ -235,6 +235,17 @@ export default function App() {
     setReviewFlags((current) => shiftFlagsAfterRemoval(current, index));
   }
 
+  function resetReview() {
+    if (!originalDraft) {
+      return;
+    }
+    setDraft(structuredClone(originalDraft));
+    setReviewFlags({});
+    setExportResult(null);
+    setMessage("Reset review state to the original generated draft.");
+    setError("");
+  }
+
   return (
     <div className="page">
       <header className="hero">
@@ -468,6 +479,9 @@ export default function App() {
                 }
               >
                 Add section
+              </button>
+              <button type="button" className="secondary" onClick={resetReview}>
+                Reset to generated draft
               </button>
               <div className="panel">
                 <h3>Draft Diff</h3>

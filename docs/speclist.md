@@ -31,9 +31,10 @@ It exists to bridge the gap between:
 9. Compare the current edited draft against the original generated draft before export.
 10. Mark draft sections with lightweight review flags and notes before export.
 11. Review a compact export-readiness summary before export.
-12. Export accepted drafts into durable OpenSpec markdown or FastSpec YAML files.
-13. Optionally target an active OpenSpec change artifact directly instead of a generic output path.
-14. Narrow retrieval and drafting with source-kind, source-origin, and location filters when the corpus mixes imported docs and repository specs.
+12. Reset the current review back to the original generated draft when needed.
+13. Export accepted drafts into durable OpenSpec markdown or FastSpec YAML files.
+14. Optionally target an active OpenSpec change artifact directly instead of a generic output path.
+15. Narrow retrieval and drafting with source-kind, source-origin, and location filters when the corpus mixes imported docs and repository specs.
 
 ## Design Constraints
 
@@ -51,6 +52,7 @@ It exists to bridge the gap between:
 - Keep edit review explicit by showing how the current draft differs from the generated draft.
 - Keep section-level review concerns visible during the final review pass.
 - Keep export decisions informed by a compact readiness summary.
+- Let reviewers restart from the generated baseline without regenerating a draft.
 
 ## Local Development
 
@@ -167,6 +169,18 @@ It reports:
   blocking issues such as empty required draft fields or sections explicitly marked `blocked`
 
 This readiness check is advisory and client-side. Backend export validation remains the final guardrail.
+
+## Review Reset
+
+Speclist now lets reviewers reset the current draft back to the original generated draft.
+
+Reset clears:
+
+- current local edits
+- section review flags
+- export result state
+
+The original generated snapshot remains the reset baseline until the reviewer generates a new draft.
 
 ## Citation Inspection
 
