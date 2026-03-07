@@ -74,6 +74,20 @@ The default Rust hooks are:
 
 Rust formatting is configured in `rustfmt.toml` with a `140` character line width and repo-wide defaults for Rust 2024.
 
+## CI/CD
+
+GitHub Actions now validates each stack independently on pushes and pull requests to `main` and `develop`:
+
+- Rust: format, clippy, and workspace tests
+- Go: `go test ./...` for `apps/speclist-api`
+- Web: `npm ci` and `npm run build` for `apps/speclist-web`
+
+To publish release artifacts, push a version tag such as `v0.1.0`. The release workflow packages:
+
+- the `fastspec` Linux CLI binary
+- the `speclist-api` Linux service binary
+- the built `speclist-web` static bundle
+
 ## Current Scope
 
 This repository now includes:

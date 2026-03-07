@@ -1,0 +1,124 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fastspec-cli:
+    name: Package fastspec CLI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release binary
+        run: cargo build --release -p fastspec-cli
+
+      - name: Archive binary
+        run: |
+          mkdir -p dist
+          cp target/release/fastspec dist/fastspec
+          tar -C dist -czf dist/fastspec-cli-linux-x86_64.tar.gz fastspec
+
+      - name: Upload asset
+        uses: actions/upload-artifact@v4
+        with:
+          name: fastspec-cli-linux-x86_64
+          path: dist/fastspec-cli-linux-x86_64.tar.gz
+
+  speclist-api:
+    name: Package speclist API
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/speclist-api
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/speclist-api/go.mod
+          cache-dependency-path: apps/speclist-api/go.mod
+
+      - name: Build release binary
+        env:
+          CGO_ENABLED: 0
+          GOOS: linux
+          GOARCH: amd64
+        run: |
+          mkdir -p dist
+          go build -o dist/speclist-api ./cmd/speclist-api
+          tar -C dist -czf dist/speclist-api-linux-x86_64.tar.gz speclist-api
+
+      - name: Upload asset
+        uses: actions/upload-artifact@v4
+        with:
+          name: speclist-api-linux-x86_64
+          path: apps/speclist-api/dist/speclist-api-linux-x86_64.tar.gz
+
+  speclist-web:
+    name: Package speclist web
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/speclist-web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/speclist-web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web app
+        run: npm run build
+
+      - name: Archive static bundle
+        run: |
+          mkdir -p release
+          tar -C dist -czf release/speclist-web-dist.tar.gz .
+
+      - name: Upload asset
+        uses: actions/upload-artifact@v4
+        with:
+          name: speclist-web-dist
+          path: apps/speclist-web/release/speclist-web-dist.tar.gz
+
+  github-release:
+    name: Publish GitHub release
+    runs-on: ubuntu-latest
+    needs:
+      - fastspec-cli
+      - speclist-api
+      - speclist-web
+    steps:
+      - name: Download packaged assets
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
