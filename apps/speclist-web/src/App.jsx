@@ -28,6 +28,11 @@ const initialExport = {
   capability_name: "",
 };
 
+const initialOutlineFilters = {
+  text: "",
+  onlyNonReady: false,
+};
+
 export default function App() {
   const [sources, setSources] = useState([]);
   const [changes, setChanges] = useState([]);
@@ -41,6 +46,7 @@ export default function App() {
   const [reviewFlags, setReviewFlags] = useState({});
   const [collapsedSections, setCollapsedSections] = useState({});
   const [activeSectionIndex, setActiveSectionIndex] = useState(0);
+  const [outlineFilters, setOutlineFilters] = useState(initialOutlineFilters);
   const [citationInspection, setCitationInspection] = useState(null);
   const [sourceDetail, setSourceDetail] = useState(null);
   const [exportResult, setExportResult] = useState(null);
@@ -50,6 +56,7 @@ export default function App() {
   const [confluence, setConfluence] = useState(initialConfluence);
   const [exportConfig, setExportConfig] = useState(initialExport);
   const sectionRefs = useRef([]);
+  const outlineEntries = draft ? filterOutlineSections(draft.sections, reviewFlags, outlineFilters) : [];
 
   useEffect(() => {
     void refreshSources();
@@ -153,6 +160,7 @@ export default function App() {
       setReviewFlags({});
       setCollapsedSections({});
       setActiveSectionIndex(0);
+      setOutlineFilters(initialOutlineFilters);
       setExportResult(null);
       setExportConfig((current) => ({
         ...current,
@@ -311,6 +319,7 @@ export default function App() {
     setReviewFlags({});
     setCollapsedSections({});
     setActiveSectionIndex(0);
+    setOutlineFilters(initialOutlineFilters);
     setExportResult(null);
     setMessage("Reset review state to the original generated draft.");
     setError("");
@@ -461,7 +470,24 @@ export default function App() {
               <div className="panel">
                 <h3>Draft Outline</h3>
                 <div className="stack">
-                  {draft.sections.map((section, index) => (
+                  <input
+                    value={outlineFilters.text}
+                    onChange={(event) => setOutlineFilters((current) => ({ ...current, text: event.target.value }))}
+                    placeholder="Filter outline by heading"
+                  />
+                  <label className="sourceCard">
+                    <span>Only non-ready</span>
+                    <input
+                      type="checkbox"
+                      checked={outlineFilters.onlyNonReady}
+                      onChange={(event) =>
+                        setOutlineFilters((current) => ({ ...current, onlyNonReady: event.target.checked }))
+                      }
+                    />
+                  </label>
+                </div>
+                <div className="stack">
+                  {outlineEntries.map(({ section, index }) => (
                     <button
                       key={`outline-${section.heading}-${index}`}
                       type="button"
@@ -475,6 +501,9 @@ export default function App() {
                       }`}
                     </button>
                   ))}
+                  {outlineEntries.length === 0 && (
+                    <p className="empty">No outline entries match the current filters.</p>
+                  )}
                 </div>
               </div>
               {draft.sections.map((section, index) => (
@@ -884,6 +913,18 @@ function titleCase(input) {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+function filterOutlineSections(sections, reviewFlags, filters) {
+  const query = String(filters.text || "").trim().toLowerCase();
+  return sections
+    .map((section, index) => ({ section, index, flag: reviewFlags[index] || { status: "ready", note: "" } }))
+    .filter(({ section, flag }) => {
+      const matchesText = !query || String(section.heading || "").toLowerCase().includes(query);
+      const isNonReady = flag.status !== "ready" || String(flag.note || "").trim().length > 0;
+      const matchesState = !filters.onlyNonReady || isNonReady;
+      return matchesText && matchesState;
+    });
 }
 
 function renderDraftDiff(originalDraft, currentDraft) {
