@@ -40,9 +40,10 @@ It exists to bridge the gap between:
 18. Keep draft orientation by marking the active section in the outline during review.
 19. Filter dense draft outlines down to matching or non-ready sections without changing the draft itself.
 20. Step forward or backward through the current outline view during review.
-21. Export accepted drafts into durable OpenSpec markdown or FastSpec YAML files.
-22. Optionally target an active OpenSpec change artifact directly instead of a generic output path.
-23. Narrow retrieval and drafting with source-kind, source-origin, and location filters when the corpus mixes imported docs and repository specs.
+21. Drive outline navigation from the keyboard during long review passes.
+22. Export accepted drafts into durable OpenSpec markdown or FastSpec YAML files.
+23. Optionally target an active OpenSpec change artifact directly instead of a generic output path.
+24. Narrow retrieval and drafting with source-kind, source-origin, and location filters when the corpus mixes imported docs and repository specs.
 
 ## Design Constraints
 
@@ -69,6 +70,7 @@ It exists to bridge the gap between:
 - Let reviewers see where they are in the draft after navigation.
 - Let reviewers narrow outline noise without mutating the draft.
 - Let reviewers walk the current outline view in sequence during review.
+- Let reviewers navigate the outline without leaving the keyboard.
 
 ## Local Development
 
@@ -258,6 +260,7 @@ The outline:
 - marks the currently active section
 - supports heading and non-ready filtering
 - supports previous and next navigation over the current outline view
+- supports `[` and `]` shortcuts for previous and next navigation when focus is not inside a form control
 - jumps to the selected section in the draft
 - reopens the selected section if it was collapsed
 

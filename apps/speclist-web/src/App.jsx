@@ -62,6 +62,32 @@ export default function App() {
     void refreshSources();
   }, []);
 
+  useEffect(() => {
+    function handleKeyDown(event) {
+      if (!draft || outlineEntries.length === 0) {
+        return;
+      }
+      const target = event.target;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement
+      ) {
+        return;
+      }
+      if (event.key === "[") {
+        event.preventDefault();
+        navigateOutline(-1);
+      } else if (event.key === "]") {
+        event.preventDefault();
+        navigateOutline(1);
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [draft, outlineEntries, activeSectionIndex]);
+
   async function refreshSources() {
     try {
       const [sourcesResponse, changesResponse] = await Promise.all([
@@ -482,6 +508,7 @@ export default function App() {
               </div>
               <div className="panel">
                 <h3>Draft Outline</h3>
+                <p className="empty">Shortcuts: `[` previous, `]` next</p>
                 <div className="stack">
                   <input
                     value={outlineFilters.text}
