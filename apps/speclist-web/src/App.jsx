@@ -311,6 +311,19 @@ export default function App() {
     }, 0);
   }
 
+  function navigateOutline(offset) {
+    if (outlineEntries.length === 0) {
+      return;
+    }
+    const currentPosition = outlineEntries.findIndex((entry) => entry.index === activeSectionIndex);
+    if (currentPosition === -1) {
+      focusSection(outlineEntries[0].index);
+      return;
+    }
+    const nextPosition = (currentPosition + offset + outlineEntries.length) % outlineEntries.length;
+    focusSection(outlineEntries[nextPosition].index);
+  }
+
   function resetReview() {
     if (!originalDraft) {
       return;
@@ -485,6 +498,24 @@ export default function App() {
                       }
                     />
                   </label>
+                  <div className="sourceList">
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => navigateOutline(-1)}
+                      disabled={outlineEntries.length === 0}
+                    >
+                      Previous
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => navigateOutline(1)}
+                      disabled={outlineEntries.length === 0}
+                    >
+                      Next
+                    </button>
+                  </div>
                 </div>
                 <div className="stack">
                   {outlineEntries.map(({ section, index }) => (
