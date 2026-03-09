@@ -182,7 +182,7 @@ jobs:
       - name: Set up Trivy
         uses: aquasecurity/setup-trivy@v0.2.2
         with:
-          version: v0.56.1
+          version: v0.69.3
 
       - name: Scan deployment config
         run: trivy config --exit-code 1 --severity HIGH,CRITICAL deploy
