@@ -35,7 +35,7 @@ jobs:
           tar -C dist -czf dist/fastspec-cli-linux-x86_64.tar.gz fastspec
 
       - name: Upload asset
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fastspec-cli-linux-x86_64
           path: dist/fastspec-cli-linux-x86_64.tar.gz
@@ -69,7 +69,7 @@ jobs:
           tar -C dist -czf dist/speclist-api-linux-x86_64.tar.gz speclist-api
 
       - name: Upload asset
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: speclist-api-linux-x86_64
           path: apps/speclist-api/dist/speclist-api-linux-x86_64.tar.gz
@@ -105,7 +105,7 @@ jobs:
           tar -C dist -czf release/speclist-web-dist.tar.gz .
 
       - name: Upload asset
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: speclist-web-dist
           path: apps/speclist-web/release/speclist-web-dist.tar.gz
@@ -128,7 +128,7 @@ jobs:
           helm package deploy/helm/speclist-platform --destination dist
 
       - name: Upload asset
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: speclist-platform-helm-chart
           path: dist/*.tgz
