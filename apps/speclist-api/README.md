@@ -32,6 +32,8 @@ go run ./cmd/speclist-api
 
 Environment:
 
+- `SPECLIST_STORE_KIND` default: `file`
 - `SPECLIST_ADDR` default: `:8080`
 - `SPECLIST_DATA_FILE` default: `./data/corpus.json`
+- `SPECLIST_POSTGRES_DSN` required when `SPECLIST_STORE_KIND=postgres`
 - `SPECLIST_REPO_ROOT` default: `../..`
