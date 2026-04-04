@@ -259,7 +259,7 @@ pub fn validate_findings(path: &Path) -> io::Result<ValidationOutput> {
     let actual_capability_ids: HashSet<String> =
         agent_capability_documents.iter().map(|document| document.document.metadata().id.clone()).collect();
 
-    for project_document in project_documents {
+    for project_document in &project_documents {
         let FastSpecDocument::Project(project) = &project_document.document else {
             continue;
         };
