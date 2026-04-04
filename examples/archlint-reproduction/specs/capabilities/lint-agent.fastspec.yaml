@@ -1,0 +1,24 @@
+apiVersion: fastspec.dev/v0alpha1
+kind: AgentCapabilitySpec
+metadata:
+  id: lint-agent
+  title: Architecture Lint Agent
+  summary: Agent capability for running architecture validation and producing structured findings.
+  tags:
+    - example
+    - agent
+spec:
+  goal: Run architecture lint checks against a FastSpec tree and return structured validation findings
+  requiredContext:
+    - A validated FastSpec project tree accessible on disk
+    - The fastspec CLI binary available in PATH
+  allowedTools:
+    - fastspec validate
+    - fastspec graph
+    - Read file system
+  disallowedActions:
+    - Modify source spec files
+    - Execute arbitrary shell commands outside fastspec CLI
+  successSignals:
+    - validate command exits with code 0 and reports valid:true
+    - All declared modules and capabilities are reachable from the project

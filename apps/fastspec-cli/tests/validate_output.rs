@@ -64,3 +64,37 @@ fn validate_json_reports_findings_for_invalid_tree() {
 
     fs::remove_dir_all(root).expect("fixture dir should be removed");
 }
+
+#[test]
+fn validate_json_detects_module_dependency_cycle() {
+    let root = unique_temp_dir("cycle-e2e-fixture");
+    std::fs::create_dir_all(root.join("modules")).expect("fixture directories should be created");
+    std::fs::write(
+        root.join("project.fastspec.yaml"),
+        "apiVersion: fastspec.dev/v0alpha1\nkind: ProjectSpec\nmetadata:\n  id: demo\n  title: Demo\n  summary: Demo project\nspec:\n  modules:\n    - id: a\n      purpose: Module A\n    - id: b\n      purpose: Module B\n",
+    )
+    .expect("project fixture should write");
+    std::fs::write(
+        root.join("modules/a.fastspec.yaml"),
+        "apiVersion: fastspec.dev/v0alpha1\nkind: ModuleSpec\nmetadata:\n  id: a\n  title: A\n  summary: Module A\nspec:\n  purpose: Does A\n  dependencies:\n    - id: b\n      reason: Needs B\n",
+    )
+    .expect("module A fixture should write");
+    std::fs::write(
+        root.join("modules/b.fastspec.yaml"),
+        "apiVersion: fastspec.dev/v0alpha1\nkind: ModuleSpec\nmetadata:\n  id: b\n  title: B\n  summary: Module B\nspec:\n  purpose: Does B\n  dependencies:\n    - id: a\n      reason: Needs A\n",
+    )
+    .expect("module B fixture should write");
+
+    let output = cli_command().args(["validate", "--json", &root.display().to_string()]).output().expect("validate command should run");
+
+    assert!(!output.status.success(), "cyclic tree should fail validation");
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("stdout should be json");
+    assert_eq!(value["valid"], false);
+    let findings = value["findings"].as_array().expect("findings should be an array");
+    assert!(
+        findings.iter().any(|finding| finding["code"] == "module_dependency_cycle"),
+        "expected module_dependency_cycle finding"
+    );
+
+    std::fs::remove_dir_all(root).expect("fixture dir should be removed");
+}
