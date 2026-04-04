@@ -1,0 +1,28 @@
+apiVersion: fastspec.dev/v0alpha1
+kind: WorkflowSpec
+metadata:
+  id: my-workflow
+  title: My Workflow
+  summary: One-line description of what this workflow accomplishes.
+  owners:
+    - team-name
+  tags:
+    - workflow
+spec:
+  purpose: >
+    Describe the end-to-end purpose of this workflow. What problem does it solve?
+    What state transition does it drive?
+  steps:
+    - name: step-one
+      description: First action in the workflow
+    - name: step-two
+      description: Second action, executed after step-one
+  inputs:
+    - name: input-name
+      description: Description of what this input provides
+  outputs:
+    - name: output-name
+      description: Description of what this workflow produces
+  triggers:
+    - Describe a condition or event that triggers this workflow
+    - Another trigger condition

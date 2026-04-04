@@ -42,7 +42,7 @@ fn generate_writes_scaffold_to_output_dir() {
     let project_readme = fs::read_to_string(output_dir.join("README.md")).expect("project readme should exist");
     assert!(project_readme.contains("Archlint Reproduction"));
     assert!(output_dir.join("modules/api/README.md").exists());
-    assert!(output_dir.join("workflows/generate.md").exists());
+    assert!(output_dir.join("workflows/generate/README.md").exists());
     assert!(output_dir.join("fastspec-manifest.json").exists());
 
     fs::remove_dir_all(output_dir).expect("generated output should be removed");
