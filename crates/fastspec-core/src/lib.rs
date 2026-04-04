@@ -59,6 +59,7 @@ pub enum GraphNodeKind {
     Project,
     Module,
     Workflow,
+    AgentCapability,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -66,6 +67,7 @@ pub enum GraphNodeKind {
 pub enum GraphEdgeKind {
     Contains,
     DefinesWorkflow,
+    DefinesCapability,
     DependsOn,
 }
 
@@ -95,6 +97,7 @@ pub struct GraphOutput {
 pub enum PlanPhase {
     Bootstrap,
     Module,
+    AgentCapability,
     Workflow,
 }
 
@@ -183,7 +186,7 @@ pub fn validate_findings(path: &Path) -> io::Result<ValidationOutput> {
     let project_documents: Vec<&SpecDocument> =
         documents.iter().filter(|document| matches!(document.document, FastSpecDocument::Project(_))).collect();
 
-    for project_document in project_documents {
+    for project_document in &project_documents {
         let FastSpecDocument::Project(project) = &project_document.document else {
             continue;
         };
@@ -251,6 +254,116 @@ pub fn validate_findings(path: &Path) -> io::Result<ValidationOutput> {
         }
     }
 
+    let agent_capability_documents: Vec<&SpecDocument> =
+        documents.iter().filter(|document| matches!(document.document, FastSpecDocument::AgentCapability(_))).collect();
+    let actual_capability_ids: HashSet<String> =
+        agent_capability_documents.iter().map(|document| document.document.metadata().id.clone()).collect();
+
+    for project_document in project_documents {
+        let FastSpecDocument::Project(project) = &project_document.document else {
+            continue;
+        };
+
+        let declared_capability_ids: HashSet<String> =
+            project.spec.agent_capabilities.iter().map(|capability| capability.id.clone()).collect();
+
+        for capability_id in &declared_capability_ids {
+            if !actual_capability_ids.contains(capability_id) {
+                findings.push(ValidationFinding {
+                    code: "missing_agent_capability_document".to_string(),
+                    severity: ValidationSeverity::Error,
+                    message: format!(
+                        "project declares agent capability `{capability_id}` but no matching agent capability document exists"
+                    ),
+                    path: project_document.path.clone(),
+                    document_id: Some(project.metadata.id.clone()),
+                });
+            }
+        }
+
+        for capability_document in &agent_capability_documents {
+            if !declared_capability_ids.contains(&capability_document.document.metadata().id) {
+                findings.push(ValidationFinding {
+                    code: "undeclared_agent_capability_document".to_string(),
+                    severity: ValidationSeverity::Error,
+                    message: format!(
+                        "agent capability document `{}` exists but is not declared in project `{}`",
+                        capability_document.document.metadata().id,
+                        project.metadata.id
+                    ),
+                    path: capability_document.path.clone(),
+                    document_id: Some(capability_document.document.metadata().id.clone()),
+                });
+            }
+        }
+    }
+
+    // Build module dependency graph and detect cycles via DFS.
+    // A cycle is a structural error that prevents meaningful planning.
+    let module_dep_graph: HashMap<&str, Vec<&str>> = module_documents
+        .iter()
+        .filter_map(|document| {
+            if let FastSpecDocument::Module(module) = &document.document {
+                let deps: Vec<&str> = module.spec.dependencies.iter().map(|d| d.id.as_str()).collect();
+                Some((module.metadata.id.as_str(), deps))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    // Two-color DFS: `color` tracks completed nodes (done), `in_stack` tracks the active path (gray).
+    let all_module_ids: Vec<&str> = module_dep_graph.keys().copied().collect();
+    let mut color: HashMap<&str, bool> = HashMap::new(); // true = done, absent = unvisited
+    let mut in_stack: HashSet<&str> = HashSet::new();
+    let mut reported_cycles: HashSet<String> = HashSet::new();
+
+    for start in &all_module_ids {
+        if color.contains_key(start) {
+            continue;
+        }
+        let mut stack: Vec<(&str, usize)> = vec![(start, 0)];
+        in_stack.insert(start);
+        while let Some((node, idx)) = stack.last().copied() {
+            let deps = module_dep_graph.get(node).map(|v| v.as_slice()).unwrap_or(&[]);
+            if idx >= deps.len() {
+                stack.pop();
+                in_stack.remove(node);
+                color.insert(node, true);
+            } else {
+                let last = stack.last_mut().unwrap();
+                last.1 += 1;
+                let next = deps[idx];
+                if !module_dep_graph.contains_key(next) {
+                    // External or unknown dependency — already caught by other rules.
+                    continue;
+                }
+                if in_stack.contains(next) {
+                    // Back-edge detected: cycle from `next` back to itself via `node`.
+                    let cycle_key = {
+                        let mut pair = [node, next];
+                        pair.sort_unstable();
+                        format!("{}-{}", pair[0], pair[1])
+                    };
+                    if reported_cycles.insert(cycle_key) {
+                        let path =
+                            module_documents.iter().find(|d| d.document.metadata().id == node).map(|d| d.path.clone()).unwrap_or_default();
+                        findings.push(ValidationFinding {
+                            code: "module_dependency_cycle".to_string(),
+                            severity: ValidationSeverity::Error,
+                            message: format!("module `{node}` participates in a dependency cycle via `{next}`"),
+                            path,
+                            document_id: Some(node.to_string()),
+                        });
+                    }
+                } else if !color.contains_key(next) {
+                    stack.push((next, 0));
+                    in_stack.insert(next);
+                }
+            }
+        }
+    }
+
     findings.sort_by(|left, right| left.code.cmp(&right.code).then(left.path.cmp(&right.path)));
 
     Ok(ValidationOutput { valid: findings.is_empty(), findings })
@@ -270,11 +383,20 @@ pub fn export_graph(path: &Path) -> io::Result<GraphOutput> {
     let mut edges = Vec::new();
     let mut module_paths: HashMap<String, PathBuf> = HashMap::new();
     let mut module_titles: HashMap<String, String> = HashMap::new();
+    let mut capability_paths: HashMap<String, PathBuf> = HashMap::new();
+    let mut capability_titles: HashMap<String, String> = HashMap::new();
 
     for document in &documents {
-        if let FastSpecDocument::Module(module) = &document.document {
-            module_paths.insert(module.metadata.id.clone(), document.path.clone());
-            module_titles.insert(module.metadata.id.clone(), module.metadata.title.clone());
+        match &document.document {
+            FastSpecDocument::Module(module) => {
+                module_paths.insert(module.metadata.id.clone(), document.path.clone());
+                module_titles.insert(module.metadata.id.clone(), module.metadata.title.clone());
+            }
+            FastSpecDocument::AgentCapability(capability) => {
+                capability_paths.insert(capability.metadata.id.clone(), document.path.clone());
+                capability_titles.insert(capability.metadata.id.clone(), capability.metadata.title.clone());
+            }
+            FastSpecDocument::Project(_) => {}
         }
     }
 
@@ -311,6 +433,24 @@ pub fn export_graph(path: &Path) -> io::Result<GraphOutput> {
                     });
                     edges.push(GraphEdge { from: project_id.clone(), to: workflow_node_id, kind: GraphEdgeKind::DefinesWorkflow });
                 }
+
+                for declared_capability in &project.spec.agent_capabilities {
+                    if let (Some(path), Some(title)) =
+                        (capability_paths.get(&declared_capability.id), capability_titles.get(&declared_capability.id))
+                    {
+                        nodes.push(GraphNode {
+                            id: declared_capability.id.clone(),
+                            kind: GraphNodeKind::AgentCapability,
+                            title: title.clone(),
+                            path: path.clone(),
+                        });
+                        edges.push(GraphEdge {
+                            from: project_id.clone(),
+                            to: declared_capability.id.clone(),
+                            kind: GraphEdgeKind::DefinesCapability,
+                        });
+                    }
+                }
             }
             FastSpecDocument::Module(module) => {
                 for dependency in &module.spec.dependencies {
@@ -342,6 +482,7 @@ pub fn export_plan(path: &Path) -> io::Result<PlanOutput> {
 
     let project_nodes: Vec<&GraphNode> = graph.nodes.iter().filter(|node| node.kind == GraphNodeKind::Project).collect();
     let module_nodes: Vec<&GraphNode> = graph.nodes.iter().filter(|node| node.kind == GraphNodeKind::Module).collect();
+    let capability_nodes: Vec<&GraphNode> = graph.nodes.iter().filter(|node| node.kind == GraphNodeKind::AgentCapability).collect();
     let workflow_nodes: Vec<&GraphNode> = graph.nodes.iter().filter(|node| node.kind == GraphNodeKind::Workflow).collect();
 
     let mut project_step_ids = Vec::new();
@@ -397,12 +538,24 @@ pub fn export_plan(path: &Path) -> io::Result<PlanOutput> {
         }
     }
 
+    let mut capability_step_ids = Vec::new();
+    for capability in capability_nodes {
+        let step_id = format!("capability:{}", capability.id);
+        capability_step_ids.push(step_id.clone());
+        steps.push(PlanStep {
+            id: step_id,
+            phase: PlanPhase::AgentCapability,
+            title: format!("Define capability {}", capability.title),
+            depends_on: module_step_ids.clone(),
+        });
+    }
+
     for workflow in workflow_nodes {
         steps.push(PlanStep {
             id: format!("workflow:{}", workflow.id.trim_start_matches("workflow:")),
             phase: PlanPhase::Workflow,
             title: format!("Plan workflow {}", workflow.title),
-            depends_on: module_step_ids.clone(),
+            depends_on: module_step_ids.iter().chain(capability_step_ids.iter()).cloned().collect(),
         });
     }
 
@@ -437,6 +590,13 @@ pub fn generate_scaffold(path: &Path, output_dir: &Path) -> io::Result<ScaffoldO
         })
         .collect();
 
+    let capability_documents: HashMap<String, &fastspec_model::AgentCapabilitySpecDocument> = documents
+        .iter()
+        .filter_map(|document| match &document.document {
+            FastSpecDocument::AgentCapability(cap) => Some((cap.metadata.id.clone(), cap)),
+            _ => None,
+        })
+        .collect();
     fs::create_dir_all(output_dir)?;
 
     let mut artifacts = Vec::new();
@@ -445,6 +605,12 @@ pub fn generate_scaffold(path: &Path, output_dir: &Path) -> io::Result<ScaffoldO
     let modules_dir = output_dir.join("modules");
     fs::create_dir_all(&modules_dir)?;
     record_directory(&mut artifacts, modules_dir.clone(), "module scaffold directory".to_string());
+
+    let capabilities_dir = output_dir.join("capabilities");
+    if !project.spec.agent_capabilities.is_empty() {
+        fs::create_dir_all(&capabilities_dir)?;
+        record_directory(&mut artifacts, capabilities_dir.clone(), "capability scaffold directory".to_string());
+    }
 
     let workflows_dir = output_dir.join("workflows");
     fs::create_dir_all(&workflows_dir)?;
@@ -482,6 +648,17 @@ pub fn generate_scaffold(path: &Path, output_dir: &Path) -> io::Result<ScaffoldO
             format!("workflow stub for {}", workflow.id),
         )?;
     }
+    for capability in &project.spec.agent_capabilities {
+        let cap_document = capability_documents.get(&capability.id).ok_or_else(|| {
+            io::Error::new(io::ErrorKind::InvalidData, format!("validated capability `{}` should have a matching document", capability.id))
+        })?;
+        write_artifact_file(
+            &mut artifacts,
+            capabilities_dir.join(format!("{}.md", capability.id)),
+            render_capability_stub(cap_document),
+            format!("capability stub for {}", capability.id),
+        )?;
+    }
 
     let manifest_path = output_dir.join("fastspec-manifest.json");
     let manifest_artifact = GeneratedArtifact {
@@ -498,6 +675,98 @@ pub fn generate_scaffold(path: &Path, output_dir: &Path) -> io::Result<ScaffoldO
     artifacts.push(manifest_artifact);
 
     Ok(ScaffoldOutput { output_dir: output_dir.to_path_buf(), artifacts })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InitOptions {
+    pub id: String,
+    pub title: String,
+    pub modules: Vec<String>,
+    pub capabilities: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct InitOutput {
+    pub dir: PathBuf,
+    pub artifacts: Vec<GeneratedArtifact>,
+}
+
+/// Scaffold a new FastSpec project tree at `dir` using the provided options.
+/// Fails if `dir` already exists and is non-empty.
+pub fn init_spec_tree(dir: &Path, opts: InitOptions) -> io::Result<InitOutput> {
+    ensure_output_dir_is_empty(dir)?;
+    fs::create_dir_all(dir)?;
+
+    let mut artifacts = Vec::new();
+    record_directory(&mut artifacts, dir.to_path_buf(), "spec root directory".to_string());
+
+    // Write project spec.
+    let project_yaml = render_init_project(&opts);
+    write_artifact_file(&mut artifacts, dir.join("project.fastspec.yaml"), project_yaml, "project spec".to_string())?;
+
+    // Write module specs.
+    if !opts.modules.is_empty() {
+        let modules_dir = dir.join("modules");
+        fs::create_dir_all(&modules_dir)?;
+        record_directory(&mut artifacts, modules_dir.clone(), "modules directory".to_string());
+        for module_id in &opts.modules {
+            write_artifact_file(
+                &mut artifacts,
+                modules_dir.join(format!("{module_id}.fastspec.yaml")),
+                render_init_module(module_id),
+                format!("module spec for {module_id}"),
+            )?;
+        }
+    }
+
+    // Write capability specs.
+    if !opts.capabilities.is_empty() {
+        let capabilities_dir = dir.join("capabilities");
+        fs::create_dir_all(&capabilities_dir)?;
+        record_directory(&mut artifacts, capabilities_dir.clone(), "capabilities directory".to_string());
+        for cap_id in &opts.capabilities {
+            write_artifact_file(
+                &mut artifacts,
+                capabilities_dir.join(format!("{cap_id}.fastspec.yaml")),
+                render_init_capability(cap_id),
+                format!("capability spec for {cap_id}"),
+            )?;
+        }
+    }
+
+    Ok(InitOutput { dir: dir.to_path_buf(), artifacts })
+}
+
+fn render_init_project(opts: &InitOptions) -> String {
+    let title = if opts.title.is_empty() { opts.id.clone() } else { opts.title.clone() };
+    let module_lines: String = if opts.modules.is_empty() {
+        String::new()
+    } else {
+        let items = opts.modules.iter().map(|id| format!("    - id: {id}\n      purpose: TODO")).collect::<Vec<_>>().join("\n");
+        format!("  modules:\n{items}\n")
+    };
+    let capability_lines: String = if opts.capabilities.is_empty() {
+        String::new()
+    } else {
+        let items = opts.capabilities.iter().map(|id| format!("    - id: {id}\n      purpose: TODO")).collect::<Vec<_>>().join("\n");
+        format!("  agentCapabilities:\n{items}\n")
+    };
+    format!(
+        "apiVersion: fastspec.dev/v0alpha1\nkind: ProjectSpec\nmetadata:\n  id: {}\n  title: {}\n  summary: TODO\nspec:\n  goals:\n    - TODO\n{module_lines}{capability_lines}",
+        opts.id, title
+    )
+}
+
+fn render_init_module(id: &str) -> String {
+    format!(
+        "apiVersion: fastspec.dev/v0alpha1\nkind: ModuleSpec\nmetadata:\n  id: {id}\n  title: {id}\n  summary: TODO\nspec:\n  purpose: TODO\n"
+    )
+}
+
+fn render_init_capability(id: &str) -> String {
+    format!(
+        "apiVersion: fastspec.dev/v0alpha1\nkind: AgentCapabilitySpec\nmetadata:\n  id: {id}\n  title: {id}\n  summary: TODO\nspec:\n  goal: TODO\n"
+    )
 }
 
 #[derive(Debug, Clone)]
@@ -589,6 +858,12 @@ fn render_project_readme(project: &ProjectSpecDocument, plan: &PlanOutput) -> St
         project.spec.modules.iter().map(|module| format!("- `{}`: {}", module.id, module.purpose)).collect::<Vec<_>>().join("\n")
     };
 
+    let capability_lines = if project.spec.agent_capabilities.is_empty() {
+        "- none".to_string()
+    } else {
+        project.spec.agent_capabilities.iter().map(|cap| format!("- `{}`: {}", cap.id, cap.purpose)).collect::<Vec<_>>().join("\n")
+    };
+
     let workflow_lines = if project.spec.workflows.is_empty() {
         "- none".to_string()
     } else {
@@ -602,8 +877,8 @@ fn render_project_readme(project: &ProjectSpecDocument, plan: &PlanOutput) -> St
     };
 
     format!(
-        "# {}\n\n{}\n\n## Modules\n{}\n\n## Workflows\n{}\n\n## Plan Steps\n{}\n",
-        project.metadata.title, project.metadata.summary, module_lines, workflow_lines, plan_lines
+        "# {}\n\n{}\n\n## Modules\n{}\n\n## Agent Capabilities\n{}\n\n## Workflows\n{}\n\n## Plan Steps\n{}\n",
+        project.metadata.title, project.metadata.summary, module_lines, capability_lines, workflow_lines, plan_lines
     )
 }
 
@@ -651,6 +926,33 @@ fn render_workflow_stub(project: &ProjectSpecDocument, workflow: &fastspec_model
     )
 }
 
+fn render_capability_stub(cap: &fastspec_model::AgentCapabilitySpecDocument) -> String {
+    let context_lines = if cap.spec.required_context.is_empty() {
+        "- none".to_string()
+    } else {
+        cap.spec.required_context.iter().map(|ctx| format!("- {ctx}")).collect::<Vec<_>>().join("\n")
+    };
+    let tool_lines = if cap.spec.allowed_tools.is_empty() {
+        "- none".to_string()
+    } else {
+        cap.spec.allowed_tools.iter().map(|tool| format!("- {tool}")).collect::<Vec<_>>().join("\n")
+    };
+    let disallowed_lines = if cap.spec.disallowed_actions.is_empty() {
+        "- none".to_string()
+    } else {
+        cap.spec.disallowed_actions.iter().map(|action| format!("- {action}")).collect::<Vec<_>>().join("\n")
+    };
+    let signal_lines = if cap.spec.success_signals.is_empty() {
+        "- none".to_string()
+    } else {
+        cap.spec.success_signals.iter().map(|signal| format!("- {signal}")).collect::<Vec<_>>().join("\n")
+    };
+    format!(
+        "# Capability: {}\n\n{}\n\n## Goal\n{}\n\n## Required Context\n{}\n\n## Allowed Tools\n{}\n\n## Disallowed Actions\n{}\n\n## Success Signals\n{}\n",
+        cap.metadata.title, cap.metadata.summary, cap.spec.goal, context_lines, tool_lines, disallowed_lines, signal_lines
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -668,9 +970,10 @@ mod tests {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/archlint-reproduction/specs");
         let summaries = validate_spec_tree(&root).expect("example specs should validate");
 
-        assert_eq!(summaries.len(), 3);
+        assert_eq!(summaries.len(), 4);
         assert!(summaries.iter().any(|summary| summary.kind == SpecKind::Project));
         assert_eq!(summaries.iter().filter(|summary| summary.kind == SpecKind::Module).count(), 2);
+        assert_eq!(summaries.iter().filter(|summary| summary.kind == SpecKind::AgentCapability).count(), 1);
         assert!(summaries.iter().any(|summary| summary.id == "archlint-reproduction"));
     }
 
@@ -742,8 +1045,10 @@ mod tests {
         assert!(graph.nodes.iter().any(|node| node.id == "api"));
         assert!(graph.nodes.iter().any(|node| node.id == "web"));
         assert!(graph.nodes.iter().any(|node| node.id == "workflow:plan"));
+        assert!(graph.nodes.iter().any(|node| node.id == "lint-agent"));
         assert!(graph.edges.iter().any(|edge| edge.from == "archlint-reproduction" && edge.to == "api"));
         assert!(graph.edges.iter().any(|edge| edge.from == "web" && edge.to == "api"));
+        assert!(graph.edges.iter().any(|edge| edge.from == "archlint-reproduction" && edge.to == "lint-agent"));
     }
 
     #[test]
@@ -771,6 +1076,7 @@ mod tests {
         assert!(
             plan.steps.iter().any(|step| step.id == "module:web" && step.depends_on.iter().any(|dependency| dependency == "module:api"))
         );
+        assert!(plan.steps.iter().any(|step| step.id == "capability:lint-agent"));
         assert!(plan.steps.iter().any(|step| step.id == "workflow:plan"));
     }
 
@@ -785,6 +1091,7 @@ mod tests {
         assert!(output.artifacts.iter().any(|artifact| artifact.path.ends_with("README.md")));
         assert!(output.artifacts.iter().any(|artifact| artifact.path.ends_with("modules/api/README.md")));
         assert!(output.artifacts.iter().any(|artifact| artifact.path.ends_with("workflows/plan.md")));
+        assert!(output.artifacts.iter().any(|artifact| artifact.path.ends_with("capabilities/lint-agent.md")));
         assert!(
             output
                 .artifacts
@@ -795,7 +1102,7 @@ mod tests {
         let project_readme = fs::read_to_string(output_dir.join("README.md")).expect("project readme should exist");
         assert!(project_readme.contains("Archlint Reproduction"));
         assert!(project_readme.contains("`module:api`"));
-
+        assert!(project_readme.contains("`capability:lint-agent`"));
         fs::remove_dir_all(output_dir).expect("output dir should be removed");
     }
 
@@ -815,6 +1122,39 @@ mod tests {
     fn unique_temp_file(name: &str) -> PathBuf {
         let unique = SystemTime::now().duration_since(UNIX_EPOCH).expect("time should move forward").as_nanos();
         std::env::temp_dir().join(format!("fastspec-{unique}-{name}"))
+    }
+
+    #[test]
+    fn detects_module_dependency_cycle() {
+        let root = unique_temp_dir("cycle-fixtures");
+        fs::create_dir_all(root.join("modules")).expect("fixture directories should be created");
+
+        fs::write(
+            root.join("project.fastspec.yaml"),
+            "apiVersion: fastspec.dev/v0alpha1\nkind: ProjectSpec\nmetadata:\n  id: demo\n  title: Demo\n  summary: Demo project\nspec:\n  modules:\n    - id: a\n      purpose: Module A\n    - id: b\n      purpose: Module B\n",
+        )
+        .expect("project fixture should write");
+        // a depends on b, b depends on a — direct cycle
+        fs::write(
+            root.join("modules/a.fastspec.yaml"),
+            "apiVersion: fastspec.dev/v0alpha1\nkind: ModuleSpec\nmetadata:\n  id: a\n  title: A\n  summary: Module A\nspec:\n  purpose: Does A\n  dependencies:\n    - id: b\n      reason: Needs B\n",
+        )
+        .expect("module A fixture should write");
+        fs::write(
+            root.join("modules/b.fastspec.yaml"),
+            "apiVersion: fastspec.dev/v0alpha1\nkind: ModuleSpec\nmetadata:\n  id: b\n  title: B\n  summary: Module B\nspec:\n  purpose: Does B\n  dependencies:\n    - id: a\n      reason: Needs A\n",
+        )
+        .expect("module B fixture should write");
+
+        let output = validate_findings(&root).expect("validation should run");
+        assert!(!output.valid, "cycle should produce a finding");
+        assert!(
+            output.findings.iter().any(|finding| finding.code == "module_dependency_cycle"),
+            "expected module_dependency_cycle finding, got: {:?}",
+            output.findings
+        );
+
+        fs::remove_dir_all(root).expect("fixture dir should be removed");
     }
 
     fn unique_temp_dir(name: &str) -> PathBuf {

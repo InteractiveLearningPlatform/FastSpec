@@ -50,3 +50,47 @@ fn graph_rejects_invalid_tree() {
 
     fs::remove_dir_all(root).expect("fixture dir should be removed");
 }
+
+#[test]
+fn graph_mermaid_produces_flowchart() {
+    let output = cli_command()
+        .args(["graph", "--format", "mermaid", &workspace_path("examples/archlint-reproduction/specs")])
+        .output()
+        .expect("graph command should run");
+
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf-8");
+    assert!(stdout.starts_with("flowchart LR"), "expected Mermaid header, got: {stdout}");
+    // Colon-containing IDs (workflow:plan) are sanitized to double-underscore.
+    assert!(stdout.contains("workflow__plan"), "expected sanitized workflow id");
+    assert!(stdout.contains("archlint-reproduction"), "expected project id");
+    // Edges should use arrows.
+    assert!(stdout.contains("-->"), "expected edge arrows");
+}
+
+#[test]
+fn graph_dot_produces_digraph() {
+    let output = cli_command()
+        .args(["graph", "--format", "dot", &workspace_path("examples/archlint-reproduction/specs")])
+        .output()
+        .expect("graph command should run");
+
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf-8");
+    assert!(stdout.contains("digraph fastspec {"), "expected DOT digraph header");
+    assert!(stdout.contains("archlint-reproduction"), "expected project id node");
+    assert!(stdout.contains("->"), "expected DOT edge arrow");
+    assert!(stdout.trim_end().ends_with("}"), "expected closing brace");
+}
+
+#[test]
+fn graph_format_flag_rejects_unknown_format() {
+    let output = cli_command()
+        .args(["graph", "--format", "xml", &workspace_path("examples/archlint-reproduction/specs")])
+        .output()
+        .expect("graph command should run");
+
+    assert!(!output.status.success(), "unknown format should fail");
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf-8");
+    assert!(stderr.contains("unknown graph format"), "expected format error message");
+}

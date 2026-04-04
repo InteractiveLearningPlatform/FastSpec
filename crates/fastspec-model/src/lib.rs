@@ -80,10 +80,11 @@ pub struct ProjectSpecBody {
     pub constraints: Vec<String>,
     #[serde(default)]
     pub modules: Vec<IdPurpose>,
+    #[serde(rename = "agentCapabilities", default)]
+    pub agent_capabilities: Vec<IdPurpose>,
     #[serde(default)]
     pub workflows: Vec<IdPurpose>,
 }
-
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ModuleSpecBody {
     pub purpose: String,
@@ -167,6 +168,7 @@ impl FastSpecDocument {
             Self::Project(document) => vec![
                 format!("goals: {}", document.spec.goals.len()),
                 format!("modules: {}", document.spec.modules.len()),
+                format!("agent_capabilities: {}", document.spec.agent_capabilities.len()),
                 format!("workflows: {}", document.spec.workflows.len()),
             ],
             Self::Module(document) => vec![

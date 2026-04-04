@@ -19,6 +19,9 @@ spec:
   constraints:
     - Prefer simple, retrieval-friendly YAML
     - Keep modules independently understandable
+  agentCapabilities:
+    - id: lint-agent
+      purpose: Run architecture lint and validation against this project's spec tree
   modules:
     - id: api
       purpose: Serve architecture data and validation results
