@@ -91,8 +91,8 @@ fn init_json_reports_artifacts() {
     let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("stdout should be json");
     assert_eq!(value["dir"], dir.display().to_string());
     let artifacts = value["artifacts"].as_array().expect("artifacts should be an array");
-    assert!(artifacts.iter().any(|a| a["path"].as_str().map_or(false, |p| p.contains("project.fastspec.yaml"))));
-    assert!(artifacts.iter().any(|a| a["path"].as_str().map_or(false, |p| p.contains("core.fastspec.yaml"))));
+    assert!(artifacts.iter().any(|a| a["path"].as_str().is_some_and(|p| p.contains("project.fastspec.yaml"))));
+    assert!(artifacts.iter().any(|a| a["path"].as_str().is_some_and(|p| p.contains("core.fastspec.yaml"))));
 
     fs::remove_dir_all(&dir).expect("output dir should be removed");
 }

@@ -100,7 +100,7 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
-    match parse_args(args.into_iter()) {
+    match parse_args(args) {
         Ok(command) => run_command(command),
         Err(message) => {
             eprintln!("{message}");
