@@ -103,10 +103,7 @@ fn init_rejects_non_empty_dir() {
     fs::create_dir_all(&dir).expect("dir should be created");
     fs::write(dir.join("existing.txt"), "occupied").expect("existing file should write");
 
-    let output = cli_command()
-        .args(["init", "--id", "demo", &dir.display().to_string()])
-        .output()
-        .expect("init command should run");
+    let output = cli_command().args(["init", "--id", "demo", &dir.display().to_string()]).output().expect("init command should run");
 
     assert!(!output.status.success(), "init on non-empty dir should fail");
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf-8");
@@ -121,10 +118,7 @@ fn init_uses_dir_name_as_default_id() {
     let base = unique_temp_dir("");
     let dir = base.join("my-spec-project");
 
-    let output = cli_command()
-        .args(["init", &dir.display().to_string()])
-        .output()
-        .expect("init command should run");
+    let output = cli_command().args(["init", &dir.display().to_string()]).output().expect("init command should run");
 
     assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
 

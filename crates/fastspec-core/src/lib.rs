@@ -288,7 +288,8 @@ pub fn validate_findings(path: &Path) -> io::Result<ValidationOutput> {
                     severity: ValidationSeverity::Error,
                     message: format!(
                         "agent capability document `{}` exists but is not declared in project `{}`",
-                        capability_document.document.metadata().id, project.metadata.id
+                        capability_document.document.metadata().id,
+                        project.metadata.id
                     ),
                     path: capability_document.path.clone(),
                     document_id: Some(capability_document.document.metadata().id.clone()),
@@ -345,17 +346,12 @@ pub fn validate_findings(path: &Path) -> io::Result<ValidationOutput> {
                         format!("{}-{}", pair[0], pair[1])
                     };
                     if reported_cycles.insert(cycle_key) {
-                        let path = module_documents
-                            .iter()
-                            .find(|d| d.document.metadata().id == node)
-                            .map(|d| d.path.clone())
-                            .unwrap_or_default();
+                        let path =
+                            module_documents.iter().find(|d| d.document.metadata().id == node).map(|d| d.path.clone()).unwrap_or_default();
                         findings.push(ValidationFinding {
                             code: "module_dependency_cycle".to_string(),
                             severity: ValidationSeverity::Error,
-                            message: format!(
-                                "module `{node}` participates in a dependency cycle via `{next}`"
-                            ),
+                            message: format!("module `{node}` participates in a dependency cycle via `{next}`"),
                             path,
                             document_id: Some(node.to_string()),
                         });
@@ -439,7 +435,9 @@ pub fn export_graph(path: &Path) -> io::Result<GraphOutput> {
                 }
 
                 for declared_capability in &project.spec.agent_capabilities {
-                    if let (Some(path), Some(title)) = (capability_paths.get(&declared_capability.id), capability_titles.get(&declared_capability.id)) {
+                    if let (Some(path), Some(title)) =
+                        (capability_paths.get(&declared_capability.id), capability_titles.get(&declared_capability.id))
+                    {
                         nodes.push(GraphNode {
                             id: declared_capability.id.clone(),
                             kind: GraphNodeKind::AgentCapability,
@@ -1152,7 +1150,8 @@ mod tests {
         assert!(!output.valid, "cycle should produce a finding");
         assert!(
             output.findings.iter().any(|finding| finding.code == "module_dependency_cycle"),
-            "expected module_dependency_cycle finding, got: {:?}", output.findings
+            "expected module_dependency_cycle finding, got: {:?}",
+            output.findings
         );
 
         fs::remove_dir_all(root).expect("fixture dir should be removed");

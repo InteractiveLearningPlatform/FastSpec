@@ -91,10 +91,7 @@ fn validate_json_detects_module_dependency_cycle() {
     let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("stdout should be json");
     assert_eq!(value["valid"], false);
     let findings = value["findings"].as_array().expect("findings should be an array");
-    assert!(
-        findings.iter().any(|finding| finding["code"] == "module_dependency_cycle"),
-        "expected module_dependency_cycle finding"
-    );
+    assert!(findings.iter().any(|finding| finding["code"] == "module_dependency_cycle"), "expected module_dependency_cycle finding");
 
     std::fs::remove_dir_all(root).expect("fixture dir should be removed");
 }

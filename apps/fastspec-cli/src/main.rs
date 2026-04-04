@@ -76,9 +76,8 @@ fn main() -> ExitCode {
     }
 
     // Top-level or per-command help flag.
-    let help_requested = args.is_empty()
-        || args.first().map(String::as_str) == Some("--help")
-        || args.first().map(String::as_str) == Some("-h");
+    let help_requested =
+        args.is_empty() || args.first().map(String::as_str) == Some("--help") || args.first().map(String::as_str) == Some("-h");
     let per_command_help = args.iter().skip(1).any(|a| a == "--help" || a == "-h");
 
     if help_requested {
@@ -227,7 +226,17 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<CliCommand, Stri
         None => GraphFormat::Text,
     };
 
-    Ok(CliCommand { kind, path, output_dir, json, graph_format: effective_graph_format, init_id, init_title, init_modules, init_capabilities })
+    Ok(CliCommand {
+        kind,
+        path,
+        output_dir,
+        json,
+        graph_format: effective_graph_format,
+        init_id,
+        init_title,
+        init_modules,
+        init_capabilities,
+    })
 }
 
 fn run_command(command: CliCommand) -> ExitCode {
@@ -244,11 +253,7 @@ fn run_command(command: CliCommand) -> ExitCode {
             let opts = InitOptions {
                 id: command.init_id.unwrap_or_else(|| {
                     // Default id from directory name, falling back to "project".
-                    Path::new(&command.path)
-                        .file_name()
-                        .and_then(|n| n.to_str())
-                        .unwrap_or("project")
-                        .to_string()
+                    Path::new(&command.path).file_name().and_then(|n| n.to_str()).unwrap_or("project").to_string()
                 }),
                 title: command.init_title.unwrap_or_default(),
                 modules: command.init_modules,
@@ -443,7 +448,7 @@ fn render_graph_mermaid(output: &GraphOutput) -> String {
         match node.kind {
             GraphNodeKind::Project => lines.push(format!("    {safe_id}[\"{}\"]", node.title)),
             GraphNodeKind::Module => lines.push(format!("    {safe_id}(\"{}\")", node.title)),
-            GraphNodeKind::Workflow => lines.push(format!("    {safe_id}{{\"{}\"}}" , node.title)),
+            GraphNodeKind::Workflow => lines.push(format!("    {safe_id}{{\"{}\"}}", node.title)),
             GraphNodeKind::AgentCapability => lines.push(format!("    {safe_id}[/\"{}\"/]", node.title)),
         }
     }
@@ -512,13 +517,39 @@ mod tests {
     #[test]
     fn parses_json_flag_before_path() {
         let command = parse_args(["summary".to_string(), "--json".to_string(), "specs".to_string()]).expect("args should parse");
-        assert_eq!(command, CliCommand { kind: CommandKind::Summary, path: "specs".to_string(), output_dir: None, json: true, graph_format: GraphFormat::Text, init_id: None, init_title: None, init_modules: vec![], init_capabilities: vec![] });
+        assert_eq!(
+            command,
+            CliCommand {
+                kind: CommandKind::Summary,
+                path: "specs".to_string(),
+                output_dir: None,
+                json: true,
+                graph_format: GraphFormat::Text,
+                init_id: None,
+                init_title: None,
+                init_modules: vec![],
+                init_capabilities: vec![]
+            }
+        );
     }
 
     #[test]
     fn parses_json_flag_after_path() {
         let command = parse_args(["inspect".to_string(), "specs".to_string(), "--json".to_string()]).expect("args should parse");
-        assert_eq!(command, CliCommand { kind: CommandKind::Inspect, path: "specs".to_string(), output_dir: None, json: true, graph_format: GraphFormat::Text, init_id: None, init_title: None, init_modules: vec![], init_capabilities: vec![] });
+        assert_eq!(
+            command,
+            CliCommand {
+                kind: CommandKind::Inspect,
+                path: "specs".to_string(),
+                output_dir: None,
+                json: true,
+                graph_format: GraphFormat::Text,
+                init_id: None,
+                init_title: None,
+                init_modules: vec![],
+                init_capabilities: vec![]
+            }
+        );
     }
 
     #[test]
@@ -530,19 +561,58 @@ mod tests {
     #[test]
     fn parses_validate_command() {
         let command = parse_args(["validate".to_string(), "--json".to_string(), "specs".to_string()]).expect("args should parse");
-        assert_eq!(command, CliCommand { kind: CommandKind::Validate, path: "specs".to_string(), output_dir: None, json: true, graph_format: GraphFormat::Text, init_id: None, init_title: None, init_modules: vec![], init_capabilities: vec![] });
+        assert_eq!(
+            command,
+            CliCommand {
+                kind: CommandKind::Validate,
+                path: "specs".to_string(),
+                output_dir: None,
+                json: true,
+                graph_format: GraphFormat::Text,
+                init_id: None,
+                init_title: None,
+                init_modules: vec![],
+                init_capabilities: vec![]
+            }
+        );
     }
 
     #[test]
     fn parses_graph_command() {
         let command = parse_args(["graph".to_string(), "--json".to_string(), "specs".to_string()]).expect("args should parse");
-        assert_eq!(command, CliCommand { kind: CommandKind::Graph, path: "specs".to_string(), output_dir: None, json: true, graph_format: GraphFormat::Json, init_id: None, init_title: None, init_modules: vec![], init_capabilities: vec![] });
+        assert_eq!(
+            command,
+            CliCommand {
+                kind: CommandKind::Graph,
+                path: "specs".to_string(),
+                output_dir: None,
+                json: true,
+                graph_format: GraphFormat::Json,
+                init_id: None,
+                init_title: None,
+                init_modules: vec![],
+                init_capabilities: vec![]
+            }
+        );
     }
 
     #[test]
     fn parses_plan_command() {
         let command = parse_args(["plan".to_string(), "--json".to_string(), "specs".to_string()]).expect("args should parse");
-        assert_eq!(command, CliCommand { kind: CommandKind::Plan, path: "specs".to_string(), output_dir: None, json: true, graph_format: GraphFormat::Text, init_id: None, init_title: None, init_modules: vec![], init_capabilities: vec![] });
+        assert_eq!(
+            command,
+            CliCommand {
+                kind: CommandKind::Plan,
+                path: "specs".to_string(),
+                output_dir: None,
+                json: true,
+                graph_format: GraphFormat::Text,
+                init_id: None,
+                init_title: None,
+                init_modules: vec![],
+                init_capabilities: vec![]
+            }
+        );
     }
 
     #[test]
@@ -552,7 +622,17 @@ mod tests {
                 .expect("args should parse");
         assert_eq!(
             command,
-            CliCommand { kind: CommandKind::Generate, path: "specs".to_string(), output_dir: Some("out".to_string()), json: true, graph_format: GraphFormat::Text, init_id: None, init_title: None, init_modules: vec![], init_capabilities: vec![] }
+            CliCommand {
+                kind: CommandKind::Generate,
+                path: "specs".to_string(),
+                output_dir: Some("out".to_string()),
+                json: true,
+                graph_format: GraphFormat::Text,
+                init_id: None,
+                init_title: None,
+                init_modules: vec![],
+                init_capabilities: vec![]
+            }
         );
     }
 
@@ -570,16 +650,15 @@ mod tests {
     }
     #[test]
     fn parses_graph_format_flag() {
-        let command =
-            parse_args(["graph".to_string(), "--format".to_string(), "mermaid".to_string(), "specs".to_string()]).expect("args should parse");
+        let command = parse_args(["graph".to_string(), "--format".to_string(), "mermaid".to_string(), "specs".to_string()])
+            .expect("args should parse");
         assert_eq!(command.graph_format, GraphFormat::Mermaid);
         assert!(!command.json);
     }
 
     #[test]
     fn graph_json_flag_sets_json_format() {
-        let command =
-            parse_args(["graph".to_string(), "--json".to_string(), "specs".to_string()]).expect("args should parse");
+        let command = parse_args(["graph".to_string(), "--json".to_string(), "specs".to_string()]).expect("args should parse");
         assert_eq!(command.graph_format, GraphFormat::Json);
         assert!(command.json);
     }
@@ -590,5 +669,4 @@ mod tests {
             .expect_err("--format should be rejected on plan");
         assert!(error.contains("--format is only valid for the graph command"));
     }
-
 }
