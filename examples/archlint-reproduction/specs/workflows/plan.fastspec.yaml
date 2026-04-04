@@ -1,0 +1,29 @@
+apiVersion: fastspec.dev/v0alpha1
+kind: WorkflowSpec
+metadata:
+  id: plan
+  title: Turn Specs Into a Plan
+  summary: Reads the validated spec tree and produces an ordered implementation plan with dependency-aware module sequencing.
+  tags:
+    - example
+    - planning
+spec:
+  purpose: Derive a dependency-ordered implementation plan from a validated FastSpec tree
+  steps:
+    - name: validate
+      description: Run fastspec validate to confirm the spec tree is clean
+    - name: export-graph
+      description: Run fastspec graph to build the dependency graph
+    - name: export-plan
+      description: Run fastspec plan to emit the ordered step list
+    - name: review
+      description: Review the plan steps and dependency ordering with the project team
+  inputs:
+    - name: spec-root
+      description: Path to the root of the FastSpec directory tree
+  outputs:
+    - name: plan-output
+      description: Ordered list of plan steps in text or JSON format
+  triggers:
+    - Spec tree passes validation
+    - A new module or dependency is declared

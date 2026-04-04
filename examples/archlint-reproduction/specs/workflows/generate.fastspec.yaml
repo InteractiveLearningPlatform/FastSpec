@@ -1,0 +1,31 @@
+apiVersion: fastspec.dev/v0alpha1
+kind: WorkflowSpec
+metadata:
+  id: generate
+  title: Materialize Scaffold From Specs
+  summary: Runs the scaffold generator to produce implementation stubs from a validated FastSpec tree.
+  tags:
+    - example
+    - scaffolding
+spec:
+  purpose: Generate implementation scaffold directories and README stubs from a validated spec tree
+  steps:
+    - name: validate
+      description: Confirm the spec tree is validation-clean before scaffolding
+    - name: scaffold
+      description: Run fastspec generate with a target output directory
+    - name: review-artifacts
+      description: Inspect the generated directories and README stubs for correctness
+  inputs:
+    - name: spec-root
+      description: Path to the root of the FastSpec directory tree
+    - name: output-dir
+      description: Empty target directory for the scaffold output
+  outputs:
+    - name: scaffold-root
+      description: Generated directory tree with module, workflow, and capability stubs
+    - name: manifest
+      description: fastspec-manifest.json listing all generated artifacts
+  triggers:
+    - Spec tree passes validation
+    - A new module, workflow, or capability is added to the project

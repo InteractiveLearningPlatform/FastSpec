@@ -8,6 +8,7 @@ pub enum SpecKind {
     Project,
     Module,
     AgentCapability,
+    Workflow,
     Unknown,
 }
 
@@ -17,6 +18,7 @@ impl SpecKind {
             Self::Project => "ProjectSpec",
             Self::Module => "ModuleSpec",
             Self::AgentCapability => "AgentCapabilitySpec",
+            Self::Workflow => "WorkflowSpec",
             Self::Unknown => "Unknown",
         }
     }
@@ -112,6 +114,28 @@ pub struct AgentCapabilitySpecBody {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct WorkflowSpecBody {
+    pub purpose: String,
+    #[serde(default)]
+    pub steps: Vec<NamedItem>,
+    #[serde(default)]
+    pub inputs: Vec<NamedItem>,
+    #[serde(default)]
+    pub outputs: Vec<NamedItem>,
+    #[serde(default)]
+    pub triggers: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct WorkflowSpecDocument {
+    #[serde(rename = "apiVersion")]
+    pub api_version: String,
+    pub kind: String,
+    pub metadata: Metadata,
+    pub spec: WorkflowSpecBody,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ProjectSpecDocument {
     #[serde(rename = "apiVersion")]
     pub api_version: String,
@@ -144,6 +168,7 @@ pub enum FastSpecDocument {
     Project(ProjectSpecDocument),
     Module(ModuleSpecDocument),
     AgentCapability(AgentCapabilitySpecDocument),
+    Workflow(WorkflowSpecDocument),
 }
 
 impl FastSpecDocument {
@@ -152,6 +177,7 @@ impl FastSpecDocument {
             Self::Project(_) => SpecKind::Project,
             Self::Module(_) => SpecKind::Module,
             Self::AgentCapability(_) => SpecKind::AgentCapability,
+            Self::Workflow(_) => SpecKind::Workflow,
         }
     }
 
@@ -160,6 +186,7 @@ impl FastSpecDocument {
             Self::Project(document) => &document.metadata,
             Self::Module(document) => &document.metadata,
             Self::AgentCapability(document) => &document.metadata,
+            Self::Workflow(document) => &document.metadata,
         }
     }
 
@@ -180,6 +207,12 @@ impl FastSpecDocument {
                 format!("goal: {}", document.spec.goal),
                 format!("required_context: {}", document.spec.required_context.len()),
                 format!("allowed_tools: {}", document.spec.allowed_tools.len()),
+            ],
+            Self::Workflow(document) => vec![
+                format!("purpose: {}", document.spec.purpose),
+                format!("steps: {}", document.spec.steps.len()),
+                format!("inputs: {}", document.spec.inputs.len()),
+                format!("outputs: {}", document.spec.outputs.len()),
             ],
         }
     }
@@ -205,6 +238,9 @@ pub fn parse_document(contents: &str) -> Result<FastSpecDocument, ParseError> {
             .map_err(|error| ParseError::new(error.to_string())),
         "AgentCapabilitySpec" => serde_yaml::from_value::<AgentCapabilitySpecDocument>(value)
             .map(FastSpecDocument::AgentCapability)
+            .map_err(|error| ParseError::new(error.to_string())),
+        "WorkflowSpec" => serde_yaml::from_value::<WorkflowSpecDocument>(value)
+            .map(FastSpecDocument::Workflow)
             .map_err(|error| ParseError::new(error.to_string())),
         other => Err(ParseError::new(format!("unsupported kind `{other}`"))),
     }

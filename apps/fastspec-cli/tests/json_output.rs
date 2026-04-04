@@ -20,7 +20,7 @@ fn summary_json_outputs_machine_readable_documents() {
 
     let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("output should be json");
     let documents = value["documents"].as_array().expect("documents should be an array");
-    assert_eq!(documents.len(), 4);
+    assert_eq!(documents.len(), 6);
     assert!(documents.iter().any(|document| document["id"] == "archlint-reproduction"));
 }
 

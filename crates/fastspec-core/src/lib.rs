@@ -298,6 +298,50 @@ pub fn validate_findings(path: &Path) -> io::Result<ValidationOutput> {
         }
     }
 
+    let workflow_documents: Vec<&SpecDocument> =
+        documents.iter().filter(|document| matches!(document.document, FastSpecDocument::Workflow(_))).collect();
+    let actual_workflow_ids: HashSet<String> =
+        workflow_documents.iter().map(|document| document.document.metadata().id.clone()).collect();
+
+    for project_document in &project_documents {
+        let FastSpecDocument::Project(project) = &project_document.document else {
+            continue;
+        };
+
+        let declared_workflow_ids: HashSet<String> =
+            project.spec.workflows.iter().map(|workflow| workflow.id.clone()).collect();
+
+        for workflow_id in &declared_workflow_ids {
+            if !actual_workflow_ids.contains(workflow_id) {
+                findings.push(ValidationFinding {
+                    code: "missing_workflow_document".to_string(),
+                    severity: ValidationSeverity::Error,
+                    message: format!(
+                        "project declares workflow `{workflow_id}` but no matching workflow document exists"
+                    ),
+                    path: project_document.path.clone(),
+                    document_id: Some(project.metadata.id.clone()),
+                });
+            }
+        }
+
+        for workflow_document in &workflow_documents {
+            if !declared_workflow_ids.contains(&workflow_document.document.metadata().id) {
+                findings.push(ValidationFinding {
+                    code: "undeclared_workflow_document".to_string(),
+                    severity: ValidationSeverity::Error,
+                    message: format!(
+                        "workflow document `{}` exists but is not declared in project `{}`",
+                        workflow_document.document.metadata().id,
+                        project.metadata.id
+                    ),
+                    path: workflow_document.path.clone(),
+                    document_id: Some(workflow_document.document.metadata().id.clone()),
+                });
+            }
+        }
+    }
+
     // Build module dependency graph and detect cycles via DFS.
     // A cycle is a structural error that prevents meaningful planning.
     let module_dep_graph: HashMap<&str, Vec<&str>> = module_documents
@@ -385,6 +429,8 @@ pub fn export_graph(path: &Path) -> io::Result<GraphOutput> {
     let mut module_titles: HashMap<String, String> = HashMap::new();
     let mut capability_paths: HashMap<String, PathBuf> = HashMap::new();
     let mut capability_titles: HashMap<String, String> = HashMap::new();
+    let mut workflow_paths: HashMap<String, PathBuf> = HashMap::new();
+    let mut workflow_titles: HashMap<String, String> = HashMap::new();
 
     for document in &documents {
         match &document.document {
@@ -396,8 +442,13 @@ pub fn export_graph(path: &Path) -> io::Result<GraphOutput> {
                 capability_paths.insert(capability.metadata.id.clone(), document.path.clone());
                 capability_titles.insert(capability.metadata.id.clone(), capability.metadata.title.clone());
             }
+            FastSpecDocument::Workflow(workflow) => {
+                workflow_paths.insert(workflow.metadata.id.clone(), document.path.clone());
+                workflow_titles.insert(workflow.metadata.id.clone(), workflow.metadata.title.clone());
+            }
             FastSpecDocument::Project(_) => {}
         }
+    }
     }
 
     for document in &documents {
@@ -424,14 +475,22 @@ pub fn export_graph(path: &Path) -> io::Result<GraphOutput> {
                 }
 
                 for workflow in &project.spec.workflows {
-                    let workflow_node_id = format!("workflow:{}", workflow.id);
-                    nodes.push(GraphNode {
-                        id: workflow_node_id.clone(),
-                        kind: GraphNodeKind::Workflow,
-                        title: workflow.purpose.clone(),
-                        path: document.path.clone(),
-                    });
-                    edges.push(GraphEdge { from: project_id.clone(), to: workflow_node_id, kind: GraphEdgeKind::DefinesWorkflow });
+                    if let (Some(path), Some(title)) =
+                        (workflow_paths.get(&workflow.id), workflow_titles.get(&workflow.id))
+                    {
+                        let workflow_node_id = format!("workflow:{}", workflow.id);
+                        nodes.push(GraphNode {
+                            id: workflow_node_id.clone(),
+                            kind: GraphNodeKind::Workflow,
+                            title: title.clone(),
+                            path: path.clone(),
+                        });
+                        edges.push(GraphEdge {
+                            from: project_id.clone(),
+                            to: workflow_node_id,
+                            kind: GraphEdgeKind::DefinesWorkflow,
+                        });
+                    }
                 }
 
                 for declared_capability in &project.spec.agent_capabilities {
@@ -463,7 +522,7 @@ pub fn export_graph(path: &Path) -> io::Result<GraphOutput> {
                     }
                 }
             }
-            FastSpecDocument::AgentCapability(_) => {}
+            FastSpecDocument::AgentCapability(_) | FastSpecDocument::Workflow(_) => {}
         }
     }
 
@@ -597,6 +656,14 @@ pub fn generate_scaffold(path: &Path, output_dir: &Path) -> io::Result<ScaffoldO
             _ => None,
         })
         .collect();
+
+    let workflow_document_map: HashMap<String, &fastspec_model::WorkflowSpecDocument> = documents
+        .iter()
+        .filter_map(|document| match &document.document {
+            FastSpecDocument::Workflow(workflow) => Some((workflow.metadata.id.clone(), workflow)),
+            _ => None,
+        })
+        .collect();
     fs::create_dir_all(output_dir)?;
 
     let mut artifacts = Vec::new();
@@ -641,10 +708,19 @@ pub fn generate_scaffold(path: &Path, output_dir: &Path) -> io::Result<ScaffoldO
     }
 
     for workflow in &project.spec.workflows {
+        let workflow_document = workflow_document_map.get(&workflow.id).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("validated workflow `{}` should have a matching document", workflow.id),
+            )
+        })?;
+        let workflow_dir = workflows_dir.join(&workflow.id);
+        fs::create_dir_all(&workflow_dir)?;
+        record_directory(&mut artifacts, workflow_dir.clone(), format!("workflow directory for {}", workflow.id));
         write_artifact_file(
             &mut artifacts,
-            workflows_dir.join(format!("{}.md", workflow.id)),
-            render_workflow_stub(project, workflow, &plan),
+            workflow_dir.join("README.md"),
+            render_workflow_readme(workflow_document),
             format!("workflow stub for {}", workflow.id),
         )?;
     }
@@ -911,18 +987,36 @@ fn render_module_readme(module: &fastspec_model::ModuleSpecDocument) -> String {
     )
 }
 
-fn render_workflow_stub(project: &ProjectSpecDocument, workflow: &fastspec_model::IdPurpose, plan: &PlanOutput) -> String {
-    let relevant_steps = plan
-        .steps
-        .iter()
-        .filter(|step| step.phase == PlanPhase::Workflow && step.id == format!("workflow:{}", workflow.id))
-        .map(|step| format!("- `{}`: {}", step.id, step.title))
-        .collect::<Vec<_>>();
-    let step_lines = if relevant_steps.is_empty() { "- none".to_string() } else { relevant_steps.join("\n") };
-
+fn render_workflow_readme(workflow: &fastspec_model::WorkflowSpecDocument) -> String {
+    let step_lines = if workflow.spec.steps.is_empty() {
+        "- none".to_string()
+    } else {
+        workflow.spec.steps.iter().map(|step| format!("- `{}`: {}", step.name, step.description)).collect::<Vec<_>>().join("\n")
+    };
+    let input_lines = if workflow.spec.inputs.is_empty() {
+        "- none".to_string()
+    } else {
+        workflow.spec.inputs.iter().map(|input| format!("- `{}`: {}", input.name, input.description)).collect::<Vec<_>>().join("\n")
+    };
+    let output_lines = if workflow.spec.outputs.is_empty() {
+        "- none".to_string()
+    } else {
+        workflow.spec.outputs.iter().map(|output| format!("- `{}`: {}", output.name, output.description)).collect::<Vec<_>>().join("\n")
+    };
+    let trigger_lines = if workflow.spec.triggers.is_empty() {
+        "- none".to_string()
+    } else {
+        workflow.spec.triggers.iter().map(|trigger| format!("- {trigger}")).collect::<Vec<_>>().join("\n")
+    };
     format!(
-        "# Workflow: {}\n\nProject: `{}`\n\n## Purpose\n{}\n\n## Planned Steps\n{}\n",
-        workflow.id, project.metadata.id, workflow.purpose, step_lines
+        "# Workflow: {}\n\n{}\n\n## Purpose\n{}\n\n## Steps\n{}\n\n## Inputs\n{}\n\n## Outputs\n{}\n\n## Triggers\n{}\n",
+        workflow.metadata.title,
+        workflow.metadata.summary,
+        workflow.spec.purpose,
+        step_lines,
+        input_lines,
+        output_lines,
+        trigger_lines
     )
 }
 
@@ -970,10 +1064,11 @@ mod tests {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/archlint-reproduction/specs");
         let summaries = validate_spec_tree(&root).expect("example specs should validate");
 
-        assert_eq!(summaries.len(), 4);
+        assert_eq!(summaries.len(), 6);
         assert!(summaries.iter().any(|summary| summary.kind == SpecKind::Project));
         assert_eq!(summaries.iter().filter(|summary| summary.kind == SpecKind::Module).count(), 2);
         assert_eq!(summaries.iter().filter(|summary| summary.kind == SpecKind::AgentCapability).count(), 1);
+        assert_eq!(summaries.iter().filter(|summary| summary.kind == SpecKind::Workflow).count(), 2);
         assert!(summaries.iter().any(|summary| summary.id == "archlint-reproduction"));
     }
 
@@ -1090,7 +1185,7 @@ mod tests {
         assert_eq!(output.output_dir, output_dir);
         assert!(output.artifacts.iter().any(|artifact| artifact.path.ends_with("README.md")));
         assert!(output.artifacts.iter().any(|artifact| artifact.path.ends_with("modules/api/README.md")));
-        assert!(output.artifacts.iter().any(|artifact| artifact.path.ends_with("workflows/plan.md")));
+        assert!(output.artifacts.iter().any(|artifact| artifact.path.ends_with("workflows/plan/README.md")));
         assert!(output.artifacts.iter().any(|artifact| artifact.path.ends_with("capabilities/lint-agent.md")));
         assert!(
             output
@@ -1153,6 +1248,32 @@ mod tests {
             "expected module_dependency_cycle finding, got: {:?}",
             output.findings
         );
+
+        fs::remove_dir_all(root).expect("fixture dir should be removed");
+    }
+
+    #[test]
+    fn reports_workflow_document_validation_findings() {
+        let root = unique_temp_dir("workflow-validation-fixtures");
+        fs::create_dir_all(root.join("workflows")).expect("fixture directories should be created");
+
+        // Project declares 'my-workflow' but no workflow doc exists → missing_workflow_document.
+        fs::write(
+            root.join("project.fastspec.yaml"),
+            "apiVersion: fastspec.dev/v0alpha1\nkind: ProjectSpec\nmetadata:\n  id: demo\n  title: Demo\n  summary: Demo project\nspec:\n  workflows:\n    - id: my-workflow\n      purpose: TODO\n",
+        )
+        .expect("project fixture should write");
+        // An undeclared workflow doc → undeclared_workflow_document.
+        fs::write(
+            root.join("workflows/ghost.fastspec.yaml"),
+            "apiVersion: fastspec.dev/v0alpha1\nkind: WorkflowSpec\nmetadata:\n  id: ghost\n  title: Ghost Workflow\n  summary: Not declared\nspec:\n  purpose: Hidden\n",
+        )
+        .expect("ghost workflow fixture should write");
+
+        let output = validate_findings(&root).expect("validation should run");
+        assert!(!output.valid);
+        assert!(output.findings.iter().any(|f| f.code == "missing_workflow_document"), "got: {:?}", output.findings);
+        assert!(output.findings.iter().any(|f| f.code == "undeclared_workflow_document"), "got: {:?}", output.findings);
 
         fs::remove_dir_all(root).expect("fixture dir should be removed");
     }
