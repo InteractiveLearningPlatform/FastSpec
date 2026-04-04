@@ -219,10 +219,10 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<CliCommand, Stri
         return Err("--id, --title, --modules, and --capabilities are only valid for the init command".to_string());
     }
 
-    // Resolve effective graph format: --format overrides --json for the graph command.
+    // For the graph command only: --format overrides --json; --json without --format implies Json.
     let effective_graph_format = match graph_format {
         Some(fmt) => fmt,
-        None if json => GraphFormat::Json,
+        None if json && kind == CommandKind::Graph => GraphFormat::Json,
         None => GraphFormat::Text,
     };
 
