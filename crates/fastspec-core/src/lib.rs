@@ -300,25 +300,21 @@ pub fn validate_findings(path: &Path) -> io::Result<ValidationOutput> {
 
     let workflow_documents: Vec<&SpecDocument> =
         documents.iter().filter(|document| matches!(document.document, FastSpecDocument::Workflow(_))).collect();
-    let actual_workflow_ids: HashSet<String> =
-        workflow_documents.iter().map(|document| document.document.metadata().id.clone()).collect();
+    let actual_workflow_ids: HashSet<String> = workflow_documents.iter().map(|document| document.document.metadata().id.clone()).collect();
 
     for project_document in &project_documents {
         let FastSpecDocument::Project(project) = &project_document.document else {
             continue;
         };
 
-        let declared_workflow_ids: HashSet<String> =
-            project.spec.workflows.iter().map(|workflow| workflow.id.clone()).collect();
+        let declared_workflow_ids: HashSet<String> = project.spec.workflows.iter().map(|workflow| workflow.id.clone()).collect();
 
         for workflow_id in &declared_workflow_ids {
             if !actual_workflow_ids.contains(workflow_id) {
                 findings.push(ValidationFinding {
                     code: "missing_workflow_document".to_string(),
                     severity: ValidationSeverity::Error,
-                    message: format!(
-                        "project declares workflow `{workflow_id}` but no matching workflow document exists"
-                    ),
+                    message: format!("project declares workflow `{workflow_id}` but no matching workflow document exists"),
                     path: project_document.path.clone(),
                     document_id: Some(project.metadata.id.clone()),
                 });
@@ -474,9 +470,7 @@ pub fn export_graph(path: &Path) -> io::Result<GraphOutput> {
                 }
 
                 for workflow in &project.spec.workflows {
-                    if let (Some(path), Some(title)) =
-                        (workflow_paths.get(&workflow.id), workflow_titles.get(&workflow.id))
-                    {
+                    if let (Some(path), Some(title)) = (workflow_paths.get(&workflow.id), workflow_titles.get(&workflow.id)) {
                         let workflow_node_id = format!("workflow:{}", workflow.id);
                         nodes.push(GraphNode {
                             id: workflow_node_id.clone(),
@@ -484,11 +478,7 @@ pub fn export_graph(path: &Path) -> io::Result<GraphOutput> {
                             title: title.clone(),
                             path: path.clone(),
                         });
-                        edges.push(GraphEdge {
-                            from: project_id.clone(),
-                            to: workflow_node_id,
-                            kind: GraphEdgeKind::DefinesWorkflow,
-                        });
+                        edges.push(GraphEdge { from: project_id.clone(), to: workflow_node_id, kind: GraphEdgeKind::DefinesWorkflow });
                     }
                 }
 
@@ -708,10 +698,7 @@ pub fn generate_scaffold(path: &Path, output_dir: &Path) -> io::Result<ScaffoldO
 
     for workflow in &project.spec.workflows {
         let workflow_document = workflow_document_map.get(&workflow.id).ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("validated workflow `{}` should have a matching document", workflow.id),
-            )
+            io::Error::new(io::ErrorKind::InvalidData, format!("validated workflow `{}` should have a matching document", workflow.id))
         })?;
         let workflow_dir = workflows_dir.join(&workflow.id);
         fs::create_dir_all(&workflow_dir)?;
@@ -1009,13 +996,7 @@ fn render_workflow_readme(workflow: &fastspec_model::WorkflowSpecDocument) -> St
     };
     format!(
         "# Workflow: {}\n\n{}\n\n## Purpose\n{}\n\n## Steps\n{}\n\n## Inputs\n{}\n\n## Outputs\n{}\n\n## Triggers\n{}\n",
-        workflow.metadata.title,
-        workflow.metadata.summary,
-        workflow.spec.purpose,
-        step_lines,
-        input_lines,
-        output_lines,
-        trigger_lines
+        workflow.metadata.title, workflow.metadata.summary, workflow.spec.purpose, step_lines, input_lines, output_lines, trigger_lines
     )
 }
 
