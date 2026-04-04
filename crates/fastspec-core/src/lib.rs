@@ -449,7 +449,6 @@ pub fn export_graph(path: &Path) -> io::Result<GraphOutput> {
             FastSpecDocument::Project(_) => {}
         }
     }
-    }
 
     for document in &documents {
         match &document.document {
